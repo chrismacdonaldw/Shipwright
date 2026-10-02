@@ -11,7 +11,9 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#ifdef DIPTYCH_GAME_MODULE
 #include "soh/DiptychGoals.h"
+#endif
 
 #include <string.h>
 

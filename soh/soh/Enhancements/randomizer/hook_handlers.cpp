@@ -66,7 +66,9 @@ extern "C" {
 #include "src/overlays/actors/ovl_En_Heishi2/z_en_heishi2.h"
 #include "src/overlays/actors/ovl_En_GirlA/z_en_girla.h"
 #include "draw.h"
+#ifdef DIPTYCH_GAME_MODULE
 #include "soh/DiptychGoals.h"
+#endif
 
 static ObjectExtension::Register<DnsItemEntry> RegisterDnsItemEntryOverride;
 static ObjectExtension::Register<ScrubIdentity> RegisterScrubIdentity;
