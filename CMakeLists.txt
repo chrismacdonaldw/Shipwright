@@ -13,6 +13,20 @@ set(SPDLOG_LEVEL_TRACE 0)
 set(SPDLOG_LEVEL_OFF 6)
 set(SPDLOG_MIN_CUTOFF SPDLOG_LEVEL_TRACE CACHE STRING "cutoff at trace")
 option(USE_ASAN "Use Address Sanitizer" OFF)
+option(DIPTYCH_SHARED_ENGINE "Build libultraship, ImGui, SDL2 and spdlog as DLLs with the dynamic CRT" OFF)
+option(DIPTYCH_GAME_MODULE "Build the game as a DLL for a multi-game host (requires DIPTYCH_SHARED_ENGINE)" OFF)
+if(DIPTYCH_GAME_MODULE AND NOT DIPTYCH_SHARED_ENGINE)
+    message(FATAL_ERROR "DIPTYCH_GAME_MODULE requires DIPTYCH_SHARED_ENGINE")
+endif()
+# Static libraries linked into the shared engine and the game modules must be position independent on ELF.
+if(DIPTYCH_SHARED_ENGINE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+# GCC gives function-local statics of inline functions one process-wide instance (STB_GNU_UNIQUE); each game module
+# keeps its own, as each Windows DLL does.
+if(DIPTYCH_GAME_MODULE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-gnu-unique>)
+endif()
 
 option(SUPPRESS_WARNINGS "Suppress warnings in LUS and src (decomp)" ON)
 if(SUPPRESS_WARNINGS)
@@ -100,6 +114,14 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     if(SOH_WINDOWS_ARM64)
         set(VCPKG_TRIPLET arm64-windows-static)
         set(VCPKG_TARGET_TRIPLET arm64-windows-static)
+    endif()
+
+    if(DIPTYCH_SHARED_ENGINE)
+        set(VCPKG_OVERLAY_TRIPLETS ${CMAKE_CURRENT_SOURCE_DIR}/CMake/triplets)
+        set(ENV{VCPKG_OVERLAY_TRIPLETS} ${VCPKG_OVERLAY_TRIPLETS})
+        set(VCPKG_TRIPLET x64-windows-diptych)
+        set(VCPKG_TARGET_TRIPLET x64-windows-diptych)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     endif()
 
     vcpkg_bootstrap()
@@ -280,6 +302,9 @@ function(quiet_dependency_tree dir)
     endforeach()
 endfunction()
 
+if(DIPTYCH_SHARED_ENGINE)
+    set(TORCH_DYNAMIC_CRT ON)
+endif()
 add_subdirectory(torch SYSTEM)
 quiet_dependency_tree(${CMAKE_CURRENT_SOURCE_DIR}/torch)
 
@@ -300,7 +325,7 @@ add_executable(soh-o2r-packer EXCLUDE_FROM_ALL
 )
 target_link_libraries(soh-o2r-packer PRIVATE torch)
 
-if(MSVC)
+if(MSVC AND NOT DIPTYCH_SHARED_ENGINE)
     set_target_properties(soh-torch soh-o2r-packer PROPERTIES
         MSVC_RUNTIME_LIBRARY "$<IF:$<CONFIG:Debug>,MultiThreadedDebug,MultiThreaded>")
 endif()
@@ -370,6 +395,9 @@ endif()
 ################################################################################
 # Sub-projects
 ################################################################################
+if(DIPTYCH_SHARED_ENGINE)
+    set(LUS_BUILD_SHARED ON)
+endif()
 add_subdirectory(libultraship ${CMAKE_BINARY_DIR}/libultraship SYSTEM)
 quiet_target(libultraship "${WARNING_OVERRIDE}")
 target_compile_definitions(libultraship PUBLIC INCLUDE_MPQ_SUPPORT)
@@ -445,3 +473,23 @@ endif()
 
 set(CPACK_PROJECT_CONFIG_FILE ${CMAKE_SOURCE_DIR}/CMake/Packaging-2.cmake)
 include(CMake/Packaging.cmake)
+
+if(MSVC AND DIPTYCH_SHARED_ENGINE)
+    function(diptych_force_dynamic_crt dir)
+        get_property(targets DIRECTORY ${dir} PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(target IN LISTS targets)
+            get_target_property(type ${target} TYPE)
+            if(type MATCHES "^(STATIC_LIBRARY|SHARED_LIBRARY|MODULE_LIBRARY|EXECUTABLE|OBJECT_LIBRARY)$")
+                set_target_properties(${target} PROPERTIES
+                    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+                set_property(TARGET ${target} APPEND PROPERTY COMPILE_OPTIONS
+                    "$<$<COMPILE_LANGUAGE:C,CXX>:$<IF:$<CONFIG:Debug>,/MDd,/MD>>")
+            endif()
+        endforeach()
+        get_property(subdirs DIRECTORY ${dir} PROPERTY SUBDIRECTORIES)
+        foreach(subdir IN LISTS subdirs)
+            diptych_force_dynamic_crt(${subdir})
+        endforeach()
+    endfunction()
+    diptych_force_dynamic_crt(${CMAKE_SOURCE_DIR})
+endif()

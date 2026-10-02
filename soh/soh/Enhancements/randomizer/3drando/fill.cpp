@@ -21,6 +21,8 @@ using namespace Rando;
 
 static bool placementFailure = false;
 
+bool (*gDiptychLocationReached)(RandomizerCheck loc) = nullptr;
+
 PriceSettingsStruct shopsanityPrices = {
     RSK_SHOPSANITY_PRICES,
     RSK_SHOPSANITY_PRICES_FIXED_PRICE,
@@ -409,6 +411,15 @@ bool AddCheckToLogic(LocationAccess& locPair, GetAccessibleLocationsStruct& gals
     if (!location->IsAddedToPool() && locPair.ConditionsMet(parentRegion, logic->CalculatingAvailableChecks) &&
         !logic->ShopItemNotForSale(loc)) {
         location->AddToPool();
+
+        if (gDiptychLocationReached != nullptr) {
+            if (gDiptychLocationReached(loc)) {
+                gals.logicUpdated = true;
+            }
+            logic->CurrentCheckKey = RC_UNKNOWN_CHECK;
+            StopPerformanceTimer(PT_LOCATION_LOGIC);
+            return false;
+        }
 
         if (locItem == RG_NONE || logic->CalculatingAvailableChecks) {
             gals.accessibleLocations.push_back(loc); // Empty location, consider for placement
@@ -962,14 +973,16 @@ static std::vector<RandomizerGet> GetMedallionsInPool(std::vector<RandomizerGet>
 // This function will specifically randomize dungeon rewards for the End of Dungeons
 // setting, or randomize one dungeon reward to Link's Pocket if that setting is on
 // RANDOTODO this function assumes only 1 of each reward can exist, fix it when starting items are refactored
-static void RandomizeDungeonRewards() {
+static bool sDiptychCorePocket = false;
+
+static void RandomizeDungeonRewards(bool fillEndOfDungeons = true) {
     auto ctx = Rando::Context::GetInstance();
 
     std::vector<RandomizerGet> rewards = FilterFromPool(itemPool, [](const auto i) {
         return Rando::StaticData::RetrieveItem(i).GetItemType() == ITEMTYPE_DUNGEONREWARD;
     });
 
-    if (ctx->GetOption(RSK_LINKS_POCKET).Is(RO_LINKS_POCKET_DUNGEON_REWARD) && rewards.size() >= 9) {
+    if (ctx->GetOption(RSK_LINKS_POCKET).Is(RO_LINKS_POCKET_DUNGEON_REWARD) && rewards.size() >= 9 && !sDiptychCorePocket) {
         RandomizerGet pocketItem = RG_GREEN_RUPEE;
         std::vector<RandomizerGet> pocketPossibilities = {};
 
@@ -1019,6 +1032,9 @@ static void RandomizeDungeonRewards() {
     }
 
     if (ctx->GetOption(RSK_SHUFFLE_DUNGEON_REWARDS).Is(RO_DUNGEON_REWARDS_END_OF_DUNGEON)) {
+        if (!fillEndOfDungeons) {
+            return;
+        }
         std::erase_if(itemPool, [](const auto i) {
             return Rando::StaticData::RetrieveItem(i).GetItemType() == ITEMTYPE_DUNGEONREWARD;
         });
@@ -1036,11 +1052,14 @@ static void RandomizeDungeonRewards() {
 
 // Fills any locations excluded by the player with junk items so that advancement items
 // can't be placed there.
-static void FillExcludedLocations() {
+static void FillExcludedLocations(bool keepPlaced = false) {
     auto ctx = Rando::Context::GetInstance();
     // Only fill in excluded locations that don't already have something and are forbidden
     std::vector<RandomizerCheck> excludedLocations =
-        FilterFromPool(ctx->allLocations, [ctx](const auto loc) { return ctx->GetItemLocation(loc)->IsExcluded(); });
+        FilterFromPool(ctx->allLocations, [ctx, keepPlaced](const auto loc) {
+            Rando::ItemLocation* location = ctx->GetItemLocation(loc);
+            return location->IsExcluded() && (!keepPlaced || location->GetPlacedRandomizerGet() == RG_NONE);
+        });
 
     for (RandomizerCheck loc : excludedLocations) {
         ctx->PlaceItemInLocation(loc, GetJunkItem());
@@ -1225,7 +1244,7 @@ static void RandomizeDungeonItems() {
 
 static void RandomizeLinksPocket() {
     auto ctx = Rando::Context::GetInstance();
-    if (ctx->GetOption(RSK_LINKS_POCKET).Is(RO_LINKS_POCKET_ADVANCEMENT)) {
+    if (ctx->GetOption(RSK_LINKS_POCKET).Is(RO_LINKS_POCKET_ADVANCEMENT) && !sDiptychCorePocket) {
         // Get all the advancement items don't include tokens
         std::vector<RandomizerGet> advancementItems = FilterAndEraseFromPool(itemPool, [](const auto i) {
             return Rando::StaticData::RetrieveItem(i).IsAdvancement() &&
@@ -1239,6 +1258,95 @@ static void RandomizeLinksPocket() {
         ctx->PlaceItemInLocation(RC_LINKS_POCKET, startingItem);
     } else if (ctx->GetOption(RSK_LINKS_POCKET).Is(RO_LINKS_POCKET_NOTHING)) {
         ctx->PlaceItemInLocation(RC_LINKS_POCKET, RG_GREEN_RUPEE);
+    }
+}
+
+static void PlaceShopItemsAndPrices() {
+    auto ctx = Rando::Context::GetInstance();
+    if (ctx->GetOption(RSK_SHOPSANITY).Is(RO_SHOPSANITY_OFF)) {
+        SPDLOG_INFO("Placing Vanilla Shop Items...");
+        PlaceVanillaShopItems(); // Place vanilla shop items in vanilla location
+    } else {
+        SPDLOG_INFO("Shuffling Shop Items");
+        int total_replaced = 0;
+        if (ctx->GetOption(RSK_SHOPSANITY).Is(RO_SHOPSANITY_RANDOM) ||
+            ctx->GetOption(RSK_SHOPSANITY_COUNT).IsNot(RO_SHOPSANITY_COUNT_ZERO_ITEMS)) { // Shopsanity 1-7, random
+            /*
+            Indices from OoTR. So shopsanity one will overwrite 7, three will overwrite 7, 5, 8, etc.
+              8 6    2 4
+              7 5    1 3
+            */
+            const std::array<int, 8> indices = { 7, 5, 8, 6, 3, 1, 4, 2 };
+// Overwrite appropriate number of shop items
+#define LOCATIONS_PER_SHOP 8
+            for (size_t i = 0; i < Rando::StaticData::GetShopLocations().size() / LOCATIONS_PER_SHOP; i++) {
+                int num_to_replace =
+                    GetShopsanityReplaceAmount(); // 1-7 shop items will be overwritten, depending on settings
+                total_replaced += num_to_replace;
+                for (int j = 0; j < num_to_replace; j++) {
+                    int itemindex = indices[j];
+                    RandomizerCheck rc =
+                        Rando::StaticData::GetShopLocations()[i * LOCATIONS_PER_SHOP + itemindex - 1];
+                    Rando::ItemLocation* itemLoc = ctx->GetItemLocation(rc);
+                    uint16_t shopsanityPrice = GetRandomPrice(Rando::StaticData::GetLocation(rc), shopsanityPrices);
+                    itemLoc->SetCustomPrice(shopsanityPrice);
+                }
+            }
+#undef LOCATIONS_PER_SHOP
+        }
+        // Get all locations and items that don't have a shopsanity price attached
+        std::vector<RandomizerCheck> shopLocations = {};
+        // Get as many vanilla shop items as the total number of shop items minus the number of replaced items
+        // So shopsanity 0 will get all 64 vanilla items, shopsanity 4 will get 32, etc.
+        std::vector<RandomizerGet> shopItems = GetMinVanillaShopItems(total_replaced);
+
+        for (RandomizerCheck& randomizerCheck : Rando::StaticData::GetShopLocations()) {
+            if (!(ctx->GetItemLocation(randomizerCheck)->HasCustomPrice())) {
+                shopLocations.push_back(randomizerCheck);
+            }
+        }
+        // Place the shop items which will still be at shop locations
+        AssumedFill(shopItems, shopLocations);
+    }
+
+    // Add prices to scrubs
+    auto scrubLoc = Rando::StaticData::GetScrubLocations();
+    if (ctx->GetOption(RSK_SHUFFLE_SCRUBS).Is(RO_SCRUBS_ALL)) {
+        for (size_t i = 0; i < scrubLoc.size(); i++) {
+            ctx->GetItemLocation(scrubLoc[i])
+                ->SetCustomPrice(GetRandomPrice(Rando::StaticData::GetLocation(scrubLoc[i]), scrubPrices));
+        }
+    } else {
+        for (size_t i = 0; i < scrubLoc.size(); i++) {
+            ctx->GetItemLocation(scrubLoc[i])
+                ->SetCustomPrice(Rando::StaticData::GetLocation(scrubLoc[i])->GetVanillaPrice());
+        }
+    }
+
+    // set merchant prices
+    if (ctx->GetOption(RSK_SHUFFLE_MERCHANTS).Is(RO_SHUFFLE_MERCHANTS_BEANS_ONLY) ||
+        ctx->GetOption(RSK_SHUFFLE_MERCHANTS).Is(RO_SHUFFLE_MERCHANTS_ALL)) {
+        ctx->GetItemLocation(RC_ZR_MAGIC_BEAN_SALESMAN)
+            ->SetCustomPrice(
+                GetRandomPrice(Rando::StaticData::GetLocation(RC_ZR_MAGIC_BEAN_SALESMAN), merchantPrices));
+    } else {
+        ctx->GetItemLocation(RC_ZR_MAGIC_BEAN_SALESMAN)
+            ->SetCustomPrice(Rando::StaticData::GetLocation(RC_ZR_MAGIC_BEAN_SALESMAN)->GetVanillaPrice());
+    }
+
+    auto merchantLoc = Rando::StaticData::GetMerchantLocations();
+
+    if (ctx->GetOption(RSK_SHUFFLE_MERCHANTS).Is(RO_SHUFFLE_MERCHANTS_ALL_BUT_BEANS) ||
+        ctx->GetOption(RSK_SHUFFLE_MERCHANTS).Is(RO_SHUFFLE_MERCHANTS_ALL)) {
+        for (size_t i = 0; i < merchantLoc.size(); i++) {
+            ctx->GetItemLocation(merchantLoc[i])
+                ->SetCustomPrice(GetRandomPrice(Rando::StaticData::GetLocation(merchantLoc[i]), merchantPrices));
+        }
+    } else {
+        for (size_t i = 0; i < merchantLoc.size(); i++) {
+            ctx->GetItemLocation(merchantLoc[i])
+                ->SetCustomPrice(Rando::StaticData::GetLocation(merchantLoc[i])->GetVanillaPrice());
+        }
     }
 }
 
@@ -1312,91 +1420,7 @@ int Fill() {
         // Place shop items first, since a buy shield is needed to place a dungeon reward on Gohma due to access
 
         StartPerformanceTimer(PT_SHOPSANITY);
-        if (ctx->GetOption(RSK_SHOPSANITY).Is(RO_SHOPSANITY_OFF)) {
-            SPDLOG_INFO("Placing Vanilla Shop Items...");
-            PlaceVanillaShopItems(); // Place vanilla shop items in vanilla location
-        } else {
-            SPDLOG_INFO("Shuffling Shop Items");
-            int total_replaced = 0;
-            if (ctx->GetOption(RSK_SHOPSANITY).Is(RO_SHOPSANITY_RANDOM) ||
-                ctx->GetOption(RSK_SHOPSANITY_COUNT).IsNot(RO_SHOPSANITY_COUNT_ZERO_ITEMS)) { // Shopsanity 1-7, random
-                /*
-                Indices from OoTR. So shopsanity one will overwrite 7, three will overwrite 7, 5, 8, etc.
-                  8 6    2 4
-                  7 5    1 3
-                */
-                const std::array<int, 8> indices = { 7, 5, 8, 6, 3, 1, 4, 2 };
-// Overwrite appropriate number of shop items
-#define LOCATIONS_PER_SHOP 8
-                for (size_t i = 0; i < Rando::StaticData::GetShopLocations().size() / LOCATIONS_PER_SHOP; i++) {
-                    int num_to_replace =
-                        GetShopsanityReplaceAmount(); // 1-7 shop items will be overwritten, depending on settings
-                    total_replaced += num_to_replace;
-                    for (int j = 0; j < num_to_replace; j++) {
-                        int itemindex = indices[j];
-                        RandomizerCheck rc =
-                            Rando::StaticData::GetShopLocations()[i * LOCATIONS_PER_SHOP + itemindex - 1];
-                        Rando::ItemLocation* itemLoc = ctx->GetItemLocation(rc);
-                        uint16_t shopsanityPrice = GetRandomPrice(Rando::StaticData::GetLocation(rc), shopsanityPrices);
-                        itemLoc->SetCustomPrice(shopsanityPrice);
-                    }
-                }
-#undef LOCATIONS_PER_SHOP
-            }
-            // Get all locations and items that don't have a shopsanity price attached
-            std::vector<RandomizerCheck> shopLocations = {};
-            // Get as many vanilla shop items as the total number of shop items minus the number of replaced items
-            // So shopsanity 0 will get all 64 vanilla items, shopsanity 4 will get 32, etc.
-            std::vector<RandomizerGet> shopItems = GetMinVanillaShopItems(total_replaced);
-
-            for (RandomizerCheck& randomizerCheck : Rando::StaticData::GetShopLocations()) {
-                if (!(ctx->GetItemLocation(randomizerCheck)->HasCustomPrice())) {
-                    shopLocations.push_back(randomizerCheck);
-                }
-            }
-            // Place the shop items which will still be at shop locations
-            AssumedFill(shopItems, shopLocations);
-        }
-
-        // Add prices to scrubs
-        auto scrubLoc = Rando::StaticData::GetScrubLocations();
-        if (ctx->GetOption(RSK_SHUFFLE_SCRUBS).Is(RO_SCRUBS_ALL)) {
-            for (size_t i = 0; i < scrubLoc.size(); i++) {
-                ctx->GetItemLocation(scrubLoc[i])
-                    ->SetCustomPrice(GetRandomPrice(Rando::StaticData::GetLocation(scrubLoc[i]), scrubPrices));
-            }
-        } else {
-            for (size_t i = 0; i < scrubLoc.size(); i++) {
-                ctx->GetItemLocation(scrubLoc[i])
-                    ->SetCustomPrice(Rando::StaticData::GetLocation(scrubLoc[i])->GetVanillaPrice());
-            }
-        }
-
-        // set merchant prices
-        if (ctx->GetOption(RSK_SHUFFLE_MERCHANTS).Is(RO_SHUFFLE_MERCHANTS_BEANS_ONLY) ||
-            ctx->GetOption(RSK_SHUFFLE_MERCHANTS).Is(RO_SHUFFLE_MERCHANTS_ALL)) {
-            ctx->GetItemLocation(RC_ZR_MAGIC_BEAN_SALESMAN)
-                ->SetCustomPrice(
-                    GetRandomPrice(Rando::StaticData::GetLocation(RC_ZR_MAGIC_BEAN_SALESMAN), merchantPrices));
-        } else {
-            ctx->GetItemLocation(RC_ZR_MAGIC_BEAN_SALESMAN)
-                ->SetCustomPrice(Rando::StaticData::GetLocation(RC_ZR_MAGIC_BEAN_SALESMAN)->GetVanillaPrice());
-        }
-
-        auto merchantLoc = Rando::StaticData::GetMerchantLocations();
-
-        if (ctx->GetOption(RSK_SHUFFLE_MERCHANTS).Is(RO_SHUFFLE_MERCHANTS_ALL_BUT_BEANS) ||
-            ctx->GetOption(RSK_SHUFFLE_MERCHANTS).Is(RO_SHUFFLE_MERCHANTS_ALL)) {
-            for (size_t i = 0; i < merchantLoc.size(); i++) {
-                ctx->GetItemLocation(merchantLoc[i])
-                    ->SetCustomPrice(GetRandomPrice(Rando::StaticData::GetLocation(merchantLoc[i]), merchantPrices));
-            }
-        } else {
-            for (size_t i = 0; i < merchantLoc.size(); i++) {
-                ctx->GetItemLocation(merchantLoc[i])
-                    ->SetCustomPrice(Rando::StaticData::GetLocation(merchantLoc[i])->GetVanillaPrice());
-            }
-        }
+        PlaceShopItemsAndPrices();
         StopPerformanceTimer(PT_SHOPSANITY);
 
         StartPerformanceTimer(PT_OWN_DUNGEON);
@@ -1500,4 +1524,41 @@ int Fill() {
     }
     // All retries failed
     return -1;
+}
+
+int Diptych_FillWorldLocal(const DiptychWorldLocalSteps& steps) {
+    auto ctx = Rando::Context::GetInstance();
+    placementFailure = false;
+    ctx->playthroughLocations.clear();
+    ctx->GetEntranceShuffler()->playthroughEntrances.clear();
+    RegionTable_Init();
+    if (steps.afterRegionTableInit) {
+        steps.afterRegionTableInit();
+    }
+    ctx->ItemReset();
+    ctx->GenerateLocationPool();
+    if (steps.afterLocationPool) {
+        steps.afterLocationPool();
+    }
+    GenerateItemPool();
+    GenerateStartingInventory();
+    FillExcludedLocations(true);
+    sDiptychCorePocket = steps.corePocket;
+    RandomizeDungeonRewards(false);
+
+    SohUtils::AppendVector(itemPool, GetMinVanillaShopItems(8));
+    if (ctx->GetOption(RSK_SHUFFLE_ENTRANCES)) {
+        if (ctx->GetEntranceShuffler()->ShuffleAllEntrances() == ENTRANCE_SHUFFLE_FAILURE) {
+            sDiptychCorePocket = false;
+            return -1;
+        }
+    }
+    SetAreas();
+    std::erase_if(itemPool,
+                  [](const auto item) { return Rando::StaticData::RetrieveItem(item).GetItemType() == ITEMTYPE_SHOP; });
+
+    PlaceShopItemsAndPrices();
+    RandomizeLinksPocket();
+    sDiptychCorePocket = false;
+    return placementFailure ? -2 : 1;
 }

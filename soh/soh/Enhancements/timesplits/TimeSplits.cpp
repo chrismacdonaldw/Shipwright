@@ -26,8 +26,16 @@ std::vector<TimesplitObject> splitList;
 std::vector<TimesplitObject> comparisonList;
 ImGuiTableFlags tableColumnFlags = ImGuiTableColumnFlags_None;
 ImVec4 splitOpacity = { 0, 0, 0, 0.5f };
+#ifdef DIPTYCH_GAME_MODULE
+const SplitSource* splitSource = nullptr;
+#endif
 
 uint32_t GetTotalTime() {
+#ifdef DIPTYCH_GAME_MODULE
+    if (splitSource != nullptr) {
+        return splitSource->totalTime();
+    }
+#endif
     return (uint32_t)GAMEPLAYSTAT_TOTAL_TIME;
 }
 

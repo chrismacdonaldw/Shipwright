@@ -2,6 +2,7 @@
 #include "z64save.h"
 #include "SeedContext.h"
 #include "dungeon.h"
+#include "randomizerEnumStrings.h"
 
 std::array<Rando::Location, RC_MAX> Rando::StaticData::locationTable;
 std::multimap<std::tuple<s16, s16, s32>, RandomizerCheck> Rando::StaticData::CheckFromActorMultimap;
@@ -1017,6 +1018,8 @@ void Rando::StaticData::InitLocationTable() {
 void Rando::StaticData::InitHashMaps() {
     for (auto& location : locationTable) {
         locationNameToEnum[location.GetName()] = location.GetRandomizerCheck();
+        // Display names repeat across quests; half seeds use enum keys.
+        locationNameToEnum[std::string(EnumToString(location.GetRandomizerCheck()))] = location.GetRandomizerCheck();
         CheckFromActorMultimap.emplace(
             std::make_tuple((int16_t)location.GetActorID(), (int16_t)location.GetScene(), location.GetActorParams()),
             location.GetRandomizerCheck());

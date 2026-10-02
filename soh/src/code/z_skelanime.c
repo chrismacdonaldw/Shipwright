@@ -1555,7 +1555,26 @@ void SkelAnime_SetUpdate(SkelAnime* skelAnime) {
  * Advances the current animation and updates all frame tables. If the animation plays once, returns true when it
  * finishes.
  */
+#ifdef DIPTYCH_HARNESS
+extern float gDiptychSkelFreeze;
+void SkelAnime_AnimateFrame(SkelAnime* skelAnime);
+#endif
+
 s32 SkelAnime_Update(SkelAnime* skelAnime) {
+#ifdef DIPTYCH_HARNESS
+    if (gDiptychSkelFreeze != -1.0f && skelAnime->animLength >= 1.0f) {
+        const f32 last = skelAnime->animLength - 1.0f;
+        const f32 start = skelAnime->startFrame, end = skelAnime->endFrame;
+        const f32 at = start + skelAnime->playSpeed * gDiptychSkelFreeze;
+        skelAnime->curFrame = gDiptychSkelFreeze < 0.0f ? last
+                              : skelAnime->mode == ANIMMODE_ONCE || skelAnime->mode == ANIMMODE_ONCE_INTERP
+                                  ? CLAMP(at, MIN(start, end), MAX(start, end))
+                                  : at - floorf(at / skelAnime->animLength) * skelAnime->animLength;
+        skelAnime->morphWeight = 0.0f;
+        SkelAnime_AnimateFrame(skelAnime);
+        return 0;
+    }
+#endif
     return skelAnime->update.normal(skelAnime);
 }
 

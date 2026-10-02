@@ -30,6 +30,11 @@
 #include "soh/ObjectExtension/ObjectExtension.h"
 #include "location.h"
 #include "item_location.h"
+#ifdef DIPTYCH_GAME_MODULE
+#include "soh/DiptychModule_ForeignItems.h"
+#include "DiptychTracker.h"
+#include "test_folder.h"
+#endif
 #include "randomizer_check_objects.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 
@@ -198,6 +203,7 @@ bool UpdateFilters();
 bool CompareChecks(RandomizerCheck, RandomizerCheck);
 bool CheckByArea(RandomizerCheckArea);
 void DrawLocation(RandomizerCheck);
+std::string LocationItemText(RandomizerCheck);
 void LoadSettings();
 void RainbowTick();
 void UpdateAreas(RandomizerCheckArea area);
@@ -1237,6 +1243,15 @@ void SetAreaSpoiled(RandomizerCheckArea rcArea) {
 
 void InternalRecalculateAvailableChecks(RandomizerRegion startingRegion, RandoAgeTime startingAgeTime);
 
+void RecalculatePendingAvailableChecks() {
+    if (recalculateAvailable) {
+        recalculateAvailable = false;
+        InternalRecalculateAvailableChecks(availableChecksStartingRegion, availableChecksStartingAgeTime);
+        availableChecksStartingRegion = RR_ROOT;
+        availableChecksStartingAgeTime = RAT_NONE;
+    }
+}
+
 void CheckTrackerWindow::DrawElement() {
     Color_Background = CVarGetColor(CVAR_TRACKER_CHECK("BgColor.Value"), Color_Bg_Default);
     Color_Area_Incomplete_Main = CVarGetColor(CVAR_TRACKER_CHECK("AreaIncomplete.MainColor.Value"), Color_Main_Default);
@@ -1275,7 +1290,11 @@ void CheckTrackerWindow::DrawElement() {
 
     hideShopUnshuffledChecks = CVarGetInteger(CVAR_TRACKER_CHECK("HideUnshuffledShopChecks"), 0);
     alwaysShowGS = CVarGetInteger(CVAR_TRACKER_CHECK("AlwaysShowGSLocs"), 0);
+#ifdef DIPTYCH_GAME_MODULE
+    if (DiptychTracker::Floating()) {
+#else
     if (CVarGetInteger(CVAR_TRACKER_CHECK("WindowType"), TRACKER_WINDOW_WINDOW) == TRACKER_WINDOW_FLOATING) {
+#endif
         if (CVarGetInteger(CVAR_TRACKER_CHECK("ShowOnlyPaused"), 0) &&
             (gPlayState == nullptr || gPlayState->pauseCtx.state == 0)) {
             return;
@@ -1303,22 +1322,27 @@ void CheckTrackerWindow::DrawElement() {
     } else {
         ImGui::SetNextWindowSize(ImVec2(400, 540), ImGuiCond_FirstUseEver);
     }
+#ifdef DIPTYCH_GAME_MODULE
+    DiptychTracker::Prepare();
+    const bool drawContents = Trackers::BeginFloatWindows(
+        DiptychTracker::Title(), &mIsVisible, Color_Background,
+        DiptychTracker::Floating() ? TRACKER_WINDOW_FLOATING : TRACKER_WINDOW_WINDOW,
+        DiptychTracker::Draggable(), ImGuiWindowFlags_NoScrollbar);
+    DiptychTracker::AfterBegin(mIsVisible);
+    if (drawContents) {
+#else
     if (Trackers::BeginFloatWindows(
             "Check Tracker", &mIsVisible, Color_Background,
             static_cast<TrackerWindowType>(CVarGetInteger(CVAR_TRACKER_CHECK("WindowType"), TRACKER_WINDOW_WINDOW)),
             CVarGetInteger(CVAR_TRACKER_CHECK("Draggable"), 1), ImGuiWindowFlags_NoScrollbar)) {
+#endif
         if (!GameInteractor::IsSaveLoaded() || !initialized) {
             ImGui::Text("Waiting for file load..."); // TODO Language
             Trackers::EndFloatWindows();
             return;
         }
 
-        if (recalculateAvailable) {
-            recalculateAvailable = false;
-            InternalRecalculateAvailableChecks(availableChecksStartingRegion, availableChecksStartingAgeTime);
-            availableChecksStartingRegion = RR_ROOT;
-            availableChecksStartingAgeTime = RAT_NONE;
-        }
+        RecalculatePendingAvailableChecks();
 
         // Quick Options
 #ifdef __WIIU__
@@ -2261,7 +2285,35 @@ void DrawLocation(RandomizerCheck rc) {
     ImGui::PopStyleColor();
 
     // Draw the extra info
-    txt = "";
+    txt = LocationItemText(rc);
+
+    if (txt != "") {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(extraColor.r / 255.0f, extraColor.g / 255.0f, extraColor.b / 255.0f,
+                                                    extraColor.a / 255.0f));
+        ImGui::SameLine();
+        ImGui::Text(" (%s)", txt.c_str());
+        ImGui::PopStyleColor();
+    }
+
+    if (showLogicTooltip) {
+        for (auto& locationInRegion : areaTable[itemLoc->GetParentRegionKey()].locations) {
+            if (locationInRegion.GetLocation() == rc) {
+                std::string conditionStr = locationInRegion.GetConditionStr();
+                if (conditionStr != "true") {
+                    UIWidgets::Tooltip(conditionStr.c_str());
+                }
+                break;
+            }
+        }
+    }
+}
+
+std::string LocationItemText(RandomizerCheck rc) {
+    Rando::Location* loc = Rando::StaticData::GetLocation(rc);
+    Rando::ItemLocation* itemLoc = OTRGlobals::Instance->gRandoContext->GetItemLocation(rc);
+    RandomizerCheckStatus status = itemLoc->GetCheckStatus();
+    bool skipped = itemLoc->GetIsSkipped();
+    std::string txt;
 
     if (status != RCSHOW_UNCHECKED) {
         switch (status) {
@@ -2327,29 +2379,22 @@ void DrawLocation(RandomizerCheck rc) {
                 break;
         }
     }
+#ifdef DIPTYCH_GAME_MODULE
+    if (IS_RANDO && !txt.empty() && itemLoc->GetPlacedRandomizerGet() == RG_DIPTYCH_FOREIGN &&
+        txt.find(itemLoc->GetPlacedItem().GetName().GetForLanguage(gSaveContext.language)) == 0) {
+        const auto name = Diptych_ForeignTrackerName(
+            rc, status == RCSHOW_SAVED || status == RCSHOW_COLLECTED || status == RCSHOW_SCUMMED);
+        if (!name.empty()) {
+            const auto price = itemLoc->CanBePurchased() && IsVisibleInCheckTracker(rc) && status == RCSHOW_IDENTIFIED
+                                   ? " - " + std::to_string(itemLoc->GetPrice()) : "";
+            txt = name + price;
+        }
+    }
+#endif
     if (txt == "" && skipped) {
         txt = "Skipped"; // TODO language
     }
-
-    if (txt != "") {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(extraColor.r / 255.0f, extraColor.g / 255.0f, extraColor.b / 255.0f,
-                                                    extraColor.a / 255.0f));
-        ImGui::SameLine();
-        ImGui::Text(" (%s)", txt.c_str());
-        ImGui::PopStyleColor();
-    }
-
-    if (showLogicTooltip) {
-        for (auto& locationInRegion : areaTable[itemLoc->GetParentRegionKey()].locations) {
-            if (locationInRegion.GetLocation() == rc) {
-                std::string conditionStr = locationInRegion.GetConditionStr();
-                if (conditionStr != "true") {
-                    UIWidgets::Tooltip(conditionStr.c_str());
-                }
-                break;
-            }
-        }
-    }
+    return txt;
 }
 
 static std::set<std::string> rainbowCVars = {
@@ -2518,12 +2563,30 @@ void LoadFromPreset(const nlohmann::json& info) {
 }
 
 void CheckTrackerWindow::Draw() {
+#ifdef DIPTYCH_GAME_MODULE
+    if (!DiptychTracker::Enabled()) return;
+    mIsVisible = true;
+    static bool testFilterApplied = false;
+    if (const char* test = DiptychTestEnv("DIPTYCH_TEST_CHECK_TRACKER")) {
+        if (!testFilterApplied && strncmp(test, "oot:", 4) == 0) {
+            testFilterApplied = true;
+            const char* search = test + 4;
+            const char* suffix = strchr(search, '|');
+            snprintf(checkSearch.InputBuf, sizeof(checkSearch.InputBuf), "%.*s",
+                     static_cast<int>(suffix ? suffix - search : strlen(search)), search);
+            checkSearch.Build();
+            UpdateFilters();
+        }
+    }
+    DrawElement();
+#else
     if (!IsVisible()) {
         return;
     }
     DrawElement();
     // Sync up the IsVisible flag if it was changed by ImGui
     SyncVisibilityConsoleVariable();
+#endif
 }
 
 void CheckTrackerSettingsWindow::DrawElement() {
@@ -2536,7 +2599,11 @@ void CheckTrackerSettingsWindow::DrawElement() {
         ImGui::TableNextColumn();
         SohGui::GetSohMenu()->MenuDrawItem(backgroundColorWidget, THEME_COLOR);
 
+#ifdef DIPTYCH_GAME_MODULE
+        DiptychTracker::DrawControls();
+#else
         SohGui::GetSohMenu()->MenuDrawItem(windowTypeWidget, THEME_COLOR);
+#endif
 
         UIWidgets::CVarSliderFloat("Font Size", CVAR_TRACKER_CHECK("FontSize"),
                                    UIWidgets::FloatSliderOptions()
@@ -2548,9 +2615,15 @@ void CheckTrackerSettingsWindow::DrawElement() {
                                        .Color(THEME_COLOR)
                                        .DefaultValue(1.0f));
 
+#ifdef DIPTYCH_GAME_MODULE
+        if (DiptychTracker::Floating()) {
+#else
         if (CVarGetInteger(CVAR_TRACKER_CHECK("WindowType"), TRACKER_WINDOW_WINDOW) == TRACKER_WINDOW_FLOATING) {
+#endif
+#ifndef DIPTYCH_GAME_MODULE
             UIWidgets::CVarCheckbox("Enable Dragging", CVAR_TRACKER_CHECK("Draggable"),
                                     UIWidgets::CheckboxOptions().Color(THEME_COLOR));
+#endif
             UIWidgets::CVarCheckbox("Only Enable While Paused", CVAR_TRACKER_CHECK("ShowOnlyPaused"),
                                     UIWidgets::CheckboxOptions().Color(THEME_COLOR));
             UIWidgets::CVarCombobox("Display Mode", CVAR_TRACKER_CHECK("DisplayType"), showMode,
@@ -2684,6 +2757,10 @@ void RegisterCheckTrackerWidgets() {
             ColorPickerOptions().Color(THEME_COLOR).DefaultValue(Color_Bg_Default).UseAlpha().ShowReset().ShowRandom());
     SohGui::GetSohMenu()->AddSearchWidget({ backgroundColorWidget, "Randomizer", "Check Tracker", "General Settings" });
 
+#ifdef DIPTYCH_GAME_MODULE
+    windowTypeWidget = { .name = "Window Type##CheckTracker", .type = WidgetType::WIDGET_CUSTOM };
+    windowTypeWidget.CustomFunction([](WidgetInfo&) { DiptychTracker::DrawControls(); });
+#else
     windowTypeWidget = { .name = "Window Type##CheckTracker", .type = WidgetType::WIDGET_CVAR_COMBOBOX };
     windowTypeWidget.CVar(CVAR_TRACKER_CHECK("WindowType"))
         .Options(ComboboxOptions()
@@ -2692,6 +2769,7 @@ void RegisterCheckTrackerWidgets() {
                      .LabelPosition(LabelPositions::Far)
                      .Color(THEME_COLOR)
                      .ComboMap(windowType));
+#endif
     SohGui::GetSohMenu()->AddSearchWidget({ windowTypeWidget, "Randomizer", "Check Tracker", "General Settings" });
 
     dungeonSpoilerWidget = { .name = "Vanilla/MQ Dungeon Spoilers", .type = WidgetType::WIDGET_CVAR_CHECKBOX };

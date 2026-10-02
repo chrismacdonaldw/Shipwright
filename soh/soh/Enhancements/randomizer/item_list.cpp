@@ -7,6 +7,10 @@
 #include "soh/Enhancements/custom-message/CustomMessageTypes.h"
 #include "draw.h"
 
+#ifdef DIPTYCH_GAME_MODULE
+extern "C" void Diptych_DrawForeignItem(PlayState* play, GetItemEntry* getItemEntry);
+#endif
+
 using namespace Rando;
 
 std::array<Item, RG_MAX> Rando::StaticData::itemTable;
@@ -510,6 +514,10 @@ void Rando::StaticData::InitItemTable() {
     itemTable[RG_TRIFORCE_PIECE] =                      Item(RG_TRIFORCE_PIECE,                   Text{ "Triforce Piece", "Morceau de Triforce", "Triforce-Fragment" },                                                                ITEMTYPE_ITEM,              0xDF,                 true,  LOGIC_NONE,                         RHT_TRIFORCE_PIECE,                    RG_TRIFORCE_PIECE,                    OBJECT_GI_BOMB_2,       GID_TRIFORCE_PIECE,   TEXT_RANDOMIZER_CUSTOM_ITEM, 0x80, CHEST_ANIM_LONG,  ITEM_CATEGORY_MAJOR,  MOD_RANDOMIZER, {"a ", "un ", "ein "}).CustomIcon(gTriforcePieceTex);
     itemTable[RG_ROCS_FEATHER] =                        Item(RG_ROCS_FEATHER,                     Text{ "Roc's Feather", "Plume de Roc", "Grefenfeider" },                                                                             ITEMTYPE_ITEM,              0xE0,                 true,  LOGIC_ROCS_FEATHER,                 RHT_ROCS_FEATHER,                      RG_ROCS_FEATHER,                      OBJECT_GI_BOMB_2,       GID_STONE_OF_AGONY,   TEXT_RANDOMIZER_CUSTOM_ITEM, 0x80, CHEST_ANIM_LONG,  ITEM_CATEGORY_MAJOR,  MOD_RANDOMIZER, {"a ", "la ", "ein "}).CustomIcon(gRocsFeatherTex);
     itemTable[RG_ROCS_FEATHER].SetCustomDrawFunc(Randomizer_DrawRocsFeather);
+#ifdef DIPTYCH_GAME_MODULE
+    itemTable[RG_DIPTYCH_FOREIGN] =                        Item(RG_DIPTYCH_FOREIGN,                     Text{ "Item for Majora's Mask", "Item for Majora's Mask", "Item for Majora's Mask" },                                                ITEMTYPE_ITEM,              0xE1,                 false, LOGIC_NONE,                         RHT_NONE,                              RG_DIPTYCH_FOREIGN,                      OBJECT_GI_BOMB_2,       GID_STONE_OF_AGONY,   TEXT_RANDOMIZER_CUSTOM_ITEM, 0x80, CHEST_ANIM_LONG,  ITEM_CATEGORY_MAJOR,  MOD_RANDOMIZER, {"an ", "an ", "an "});
+    itemTable[RG_DIPTYCH_FOREIGN].SetCustomDrawFunc(Diptych_DrawForeignItem);
+#endif
 
     // clang-format on
 

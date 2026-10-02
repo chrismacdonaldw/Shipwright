@@ -16,6 +16,9 @@
 #include "soh/Enhancements/randomizer/randomizer.h"
 #include "soh/ShipInit.hpp"
 #include <soh/ResourceManagerHelpers.h>
+#ifdef DIPTYCH_GAME_MODULE
+#include "soh/DiptychModule_ForeignItems.h"
+#endif
 
 extern "C" {
 #include "variables.h"
@@ -127,6 +130,23 @@ void BuildTriforcePieceMessage(CustomMessage& msg) {
     msg.AutoFormat(ITEM_CUSTOM);
 }
 
+#ifdef DIPTYCH_GAME_MODULE
+RandomizerCheck Randomizer_GetQueuedCheck();
+
+void BuildDiptychForeignMessage(CustomMessage& msg, const GetItemEntry& getItemEntry) {
+    const RandomizerCheck rc = Randomizer_GetQueuedCheck();
+    if (Diptych_ForeignTrapDisguised(rc)) {
+        Rando::Traps::BuildIceTrapMessage(msg, getItemEntry);
+        return;
+    }
+    const DiptychForeignName shown = Diptych_ForeignItemShown(rc);
+    msg = CustomMessage("You found " + shown.article + "%g" + shown.name + "%w for %rMajora's Mask%w!",
+                        "Du hast %g" + shown.name + "%w für %rMajora's Mask%w gefunden!",
+                        "Vous avez trouvé %g" + shown.name + "%w pour %rMajora's Mask%w!", TEXTBOX_TYPE_BLUE);
+    msg.AutoFormat();
+}
+#endif
+
 void BuildTriforceMessage(CustomMessage& msg) {
     msg = { "You completed the %yTriforce of&Courage%w! %gGG%w!",
             "Das %yTriforce des Mutes%w! Du hast&alle Splitter gefunden. %gGut gemacht%w!",
@@ -230,6 +250,10 @@ void BuildItemMessage(u16* textId, bool* loadFromMessageTable) {
         BuildTriforcePieceMessage(msg);
     } else if (player->getItemEntry.getItemId == RG_TRIFORCE) {
         BuildTriforceMessage(msg);
+#ifdef DIPTYCH_GAME_MODULE
+    } else if (player->getItemEntry.getItemId == RG_DIPTYCH_FOREIGN && player->getItemEntry.modIndex == MOD_RANDOMIZER) {
+        BuildDiptychForeignMessage(msg, player->getItemEntry);
+#endif
     } else {
         BuildCustomItemMessage(player, msg);
     }

@@ -30,6 +30,9 @@ void Grotto_SetLoadOverride(s16 originalIndex, s16 overrideIndex);
 s16 Grotto_GetEntranceValueHandlingGrottoRando(s16 nextEntranceIndex);
 s16 Grotto_OverrideSpecialEntrance(s16 nextEntranceIndex);
 void Grotto_OverrideActorEntrance(Actor* thisx);
+#ifdef DIPTYCH_GAME_MODULE
+s16 Grotto_SetupCrossEntrance(s16 entranceIndex);
+#endif
 void Grotto_ForceGrottoReturnOnSpecialEntrance(void);
 void Grotto_ForceGrottoReturn(void);
 void Grotto_ForceRegularVoidOut(void);

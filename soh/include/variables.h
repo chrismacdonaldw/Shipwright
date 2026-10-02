@@ -3,6 +3,7 @@
 
 #include "z64.h"
 #include "segment_symbols.h"
+#include "libultraship/export.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -237,7 +238,7 @@ extern "C"
 	extern Arena gSystemArena;
 	extern OSPifRam __osPifInternalBuff;
 	extern u8 __osContLastPoll;
-	extern u8 __osMaxControllers;
+	extern LUS_DATA_IMPORT u8 __osMaxControllers;
 	extern __OSInode __osPfsInodeCache;
 	extern OSPifRam gPifMempakBuf;
 	extern u16 gZBuffer[SCREEN_HEIGHT][SCREEN_WIDTH]; // 0x25800 bytes

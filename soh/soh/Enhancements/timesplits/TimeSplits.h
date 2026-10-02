@@ -4,6 +4,9 @@
 
 #include <vector>
 #include <map>
+#ifdef DIPTYCH_GAME_MODULE
+#include <nlohmann/json.hpp>
+#endif
 
 #ifdef __cplusplus
 namespace TimeSplits {
@@ -49,6 +52,16 @@ typedef struct {
     uint8_t splitStatus;
     uint32_t splitType;
 } TimesplitObject;
+
+#ifdef DIPTYCH_GAME_MODULE
+typedef struct {
+    uint32_t (*totalTime)();
+    std::string (*filePath)();
+    nlohmann::json (*toFile)(const TimesplitObject& split);
+    TimesplitObject (*fromFile)(const nlohmann::json& split);
+} SplitSource;
+extern const SplitSource* splitSource;
+#endif
 
 #define SPLIT_BOSS(actorId, name) \
     { actorId, name, 0, 0, SPLIT_INACTIVE, SPLIT_TYPE_BOSS }

@@ -361,7 +361,7 @@ std::string extractNumberInParentheses(const std::string& text) {
 
 void PlandomizerPopulateSeedList() {
     existingSeedList.clear();
-    auto spoilerPath = Ship::Context::GetPathRelativeToAppDirectory("Randomizer");
+    auto spoilerPath = Ship::Context::GetPathRelativeToAppDirectory(HostedDataFolder("Randomizer"));
 
     if (std::filesystem::exists(spoilerPath)) {
         for (const auto& entry : std::filesystem::directory_iterator(spoilerPath)) {
@@ -570,7 +570,7 @@ void PlandomizerLoadSpoilerLog(std::string logFile) {
     drawnItemsList.clear();
 
     nlohmann::json spoilerLogInput;
-    auto spoilerPath = Ship::Context::GetPathRelativeToAppDirectory("Randomizer");
+    auto spoilerPath = Ship::Context::GetPathRelativeToAppDirectory(HostedDataFolder("Randomizer"));
     std::string spoilerStr = spoilerPath + "/" + logFile.c_str() + ".json";
 
     if (!std::filesystem::exists(spoilerStr)) {

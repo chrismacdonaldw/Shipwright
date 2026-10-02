@@ -85,3 +85,9 @@ static void RegisterAutosave() {
 }
 
 static RegisterShipInitFunc initFunc(RegisterAutosave, { CVAR_AUTOSAVE_NAME });
+
+#ifdef DIPTYCH_GAME_MODULE
+void Autosave_ShiftDeadline(uint64_t ms) {
+    lastSaveTimestamp += ms;
+}
+#endif

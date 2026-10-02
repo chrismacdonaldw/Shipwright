@@ -15,6 +15,11 @@
 
 #define NTSC_LANGUAGE_INDEX (gSaveContext.language == LANGUAGE_ENG)
 
+#ifdef DIPTYCH_GAME_MODULE
+int Diptych_BeforeNewFile(int fileNum, int questType);
+void Diptych_AfterNewFile(void);
+#endif
+
 // DATA
 
 static void* sNameLabelTexturesNES[] = {
@@ -701,6 +706,11 @@ void FileChoose_DrawNameEntryNES(GameState* thisx) {
                                 }
                             }
 
+#ifdef DIPTYCH_GAME_MODULE
+                            if (validName && !Diptych_BeforeNewFile(this->buttonIndex, this->questType[this->buttonIndex])) {
+                                validName = false;
+                            }
+#endif
                             if (validName) {
                                 Audio_PlaySfxGeneral(NA_SE_SY_FSEL_DECIDE_L, &gSfxDefaultPos, 4,
                                                      &gSfxDefaultFreqAndVolScale, &gSfxDefaultFreqAndVolScale,
@@ -708,6 +718,9 @@ void FileChoose_DrawNameEntryNES(GameState* thisx) {
                                 gSaveContext.fileNum = this->buttonIndex;
                                 dayTime = ((void)0, gSaveContext.dayTime);
                                 Sram_InitSave(this);
+#ifdef DIPTYCH_GAME_MODULE
+                                Diptych_AfterNewFile();
+#endif
                                 gSaveContext.dayTime = dayTime;
                                 this->prevConfigMode = CM_MAIN_MENU;
                                 this->configMode = CM_NAME_ENTRY_TO_MAIN;

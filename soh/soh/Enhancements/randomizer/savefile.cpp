@@ -50,7 +50,17 @@ static uint16_t rupeeCounts[] = {
     200, // ITEM_RUPEE_GOLD
 };
 
+#ifdef DIPTYCH_GAME_MODULE
+bool Diptych_OweStartingCheck(RandomizerCheck rc);
+#endif
+
 void StartingItemGive(GetItemEntry getItemEntry, RandomizerCheck randomizerCheck) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (randomizerCheck != RC_MAX && Diptych_OweStartingCheck(randomizerCheck)) {
+        OTRGlobals::Instance->gRandoContext->GetItemLocation(randomizerCheck)->SetCheckStatus(RCSHOW_SAVED);
+        return;
+    }
+#endif
     if (randomizerCheck != RC_MAX) {
         OTRGlobals::Instance->gRandoContext->GetItemLocation(randomizerCheck)->SetCheckStatus(RCSHOW_SAVED);
     }

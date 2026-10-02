@@ -35,6 +35,8 @@ AudioMgr gAudioMgr;
 OSMesgQueue sSiIntMsgQ;
 OSMesg sSiIntMsgBuf[1];
 
+int gDiptychHosted = 0;
+
 void Main_LogSystemHeap(void) {
     osSyncPrintf(VT_FGCOL(GREEN));
     // "System heap size% 08x (% dKB) Start address% 08x"
@@ -55,6 +57,8 @@ int SDL_main(int argc, char* argv[]) {
     // Allow non-ascii characters for Windows
     setlocale(LC_ALL, ".UTF8");
 
+#elif defined(DIPTYCH_GAME_MODULE)
+int SDL_main(int argc, char* argv[]) {
 #else //_WIN32
 int main(int argc, char* argv[]) {
 #endif
@@ -66,15 +70,19 @@ int main(int argc, char* argv[]) {
 
     Heaps_Alloc();
     Main(0);
+    if (gDiptychHosted) {
+        return 0;
+    }
     DeinitOTR();
     Heaps_Free();
     return 0;
 }
 
 void Main(void* arg) {
-    IrqMgrClient irqClient;
-    OSMesgQueue irqMgrMsgQ;
-    OSMesg irqMgrMsgBuf[60];
+    // IrqMgr retains these registrations after hosted Main returns.
+    static IrqMgrClient irqClient;
+    static OSMesgQueue irqMgrMsgQ;
+    static OSMesg irqMgrMsgBuf[60];
     uintptr_t sysHeap;
     uintptr_t fb;
     void* debugHeap;
@@ -137,6 +145,10 @@ void Main(void* arg) {
     osCreateThread(&sGraphThread, 4, Graph_ThreadEntry, arg, sGraphStack + sizeof(sGraphStack), Z_PRIORITY_GRAPH);
     osStartThread(&sGraphThread);
     osSetThreadPri(0, Z_PRIORITY_SCHED);
+
+    if (gDiptychHosted) {
+        return;
+    }
 
     Graph_ThreadEntry(0);
 

@@ -1,3 +1,8 @@
+#ifdef DIPTYCH_GAME_MODULE
+#include "DiptychModule.h"
+#include "DiptychTracker.h"
+#include "diptych_rando_page.h"
+#endif
 #include <unordered_set>
 
 #include <ship/Context.h>
@@ -676,6 +681,7 @@ void SohMenu::AddMenuRandomizer() {
     // Seed Settings
     WidgetPath path = { "Randomizer", "General", SECTION_COLUMN_1 };
     AddSidebarEntry("Randomizer", path.sidebarName, 2);
+#ifndef DIPTYCH_GAME_MODULE
     AddWidget(path,
               "Be sure to explore the Presets and Enhancements Menus for various Speedups and Quality of Life changes!",
               WIDGET_TEXT)
@@ -728,6 +734,7 @@ void SohMenu::AddMenuRandomizer() {
         .Options(ButtonOptions()
                      .Size(ImVec2(250.f, 0.f))
                      .DisabledTooltip("Must be on File Select to generate a randomizer seed."));
+#endif
     AddWidget(path, "Randomize All Settings", WIDGET_BUTTON)
         .Callback([](WidgetInfo& info) { Rando::Settings::GetInstance()->RandomizeAllSettings(); })
         .PreFunc([](WidgetInfo& info) {
@@ -736,12 +743,18 @@ void SohMenu::AddMenuRandomizer() {
         .Options(ButtonOptions()
                      .Size(ImVec2(250.f, 0.f))
                      .Tooltip("Randomizes all randomizer settings to random valid values (excludes tricks)."))
-        .SameLine(true);
+#ifndef DIPTYCH_GAME_MODULE
+        .SameLine(true)
+#endif
+        ;
+#ifndef DIPTYCH_GAME_MODULE
     AddWidget(path, "Spoiler File", WIDGET_CUSTOM).CustomFunction([](WidgetInfo& info) {
         if (!CVarGetInteger(CVAR_RANDOMIZER_SETTING("DontGenerateSpoiler"), 0)) {
             ImGui::Text("Spoiler File: %s", CVarGetString(CVAR_GENERAL("SpoilerLog"), ""));
         }
     });
+
+#endif
 
     // Enhancements
     AddWidget(path, "Enhancements", WIDGET_SEPARATOR_TEXT);
@@ -880,12 +893,17 @@ void SohMenu::AddMenuRandomizer() {
     AddSidebarEntry("Randomizer", path.sidebarName, 1);
 
     AddWidget(path, "Check Tracker", WIDGET_SEPARATOR_TEXT);
+#ifdef DIPTYCH_GAME_MODULE
+    AddWidget(path, "Check Tracker", WIDGET_CUSTOM)
+        .CustomFunction([](WidgetInfo&) { DiptychTracker::DrawToggle(); });
+#else
     AddWidget(path, "Toggle Check Tracker", WIDGET_WINDOW_BUTTON)
         .CVar(CVAR_WINDOW("CheckTracker"))
         .RaceDisable(false)
         .WindowName("Check Tracker")
         .HideInSearch(true)
         .Options(WindowButtonOptions().Tooltip("Toggles the Check Tracker.").EmbedWindow(false));
+#endif
 
     AddWidget(path, "Check Tracker Settings", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Popout Check Tracker Settings", WIDGET_WINDOW_BUTTON)
@@ -914,6 +932,10 @@ void SohMenu::AddMenuRandomizer() {
         .WindowName("Hint Tracker Settings")
         .HideInSearch(true)
         .Options(WindowButtonOptions().Tooltip("Enables the separate Hint Tracker Settings Window."));
+#ifdef DIPTYCH_GAME_MODULE
+    for (const char* tracker : {"Item Tracker", "Entrance Tracker", "Check Tracker", "Hint Tracker"})
+        MoveRuntimeSidebar("Randomizer", tracker, "Settings");
+#endif
 }
 
 } // namespace SohGui

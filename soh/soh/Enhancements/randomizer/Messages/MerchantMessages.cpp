@@ -15,6 +15,9 @@
 #include "soh/Enhancements/randomizer/randomizer.h"
 #include "soh/Enhancements/custom-message/CustomMessageTypes.h"
 #include "soh/ShipInit.hpp"
+#ifdef DIPTYCH_GAME_MODULE
+#include "soh/DiptychModule_ForeignItems.h"
+#endif
 
 extern "C" {
 #include <macros.h>
@@ -36,13 +39,17 @@ void BuildMerchantMessage(CustomMessage& msg, RandomizerCheck rc, bool mysteriou
     std::string color = Rando::StaticData::RetrieveItem(static_cast<RandomizerGet>(rgid)).GetColor();
     // Shop lists want a bare name, everyone else speaks in sentences and wants an article
     bool inShop = Rando::StaticData::GetLocation(rc)->IsShop();
+    bool iceTrap = rgid == RG_ICE_TRAP;
+#ifdef DIPTYCH_GAME_MODULE
+    iceTrap = iceTrap || (rgid == RG_DIPTYCH_FOREIGN && Diptych_ForeignTrapDisguised(rc));
+#endif
     if (mysterious) {
         itemName = Rando::StaticData::hintTextTable[RHT_MYSTERIOUS_ITEM_CAPITAL].GetHintMessage();
         if (!inShop) {
             itemName = CustomMessage("a ", "einen ", "un ") + itemName;
         }
         color = "%g";
-    } else if (rgid == RG_ICE_TRAP) {
+    } else if (iceTrap) {
         rgid = RAND_GET_OVERRIDE(rc).LooksLike();
         Text trickName = RAND_GET_OVERRIDE(rc).GetTrickName();
         if (!inShop) {
@@ -50,6 +57,11 @@ void BuildMerchantMessage(CustomMessage& msg, RandomizerCheck rc, bool mysteriou
         }
         itemName = CustomMessage(trickName);
         color = "%g";
+#ifdef DIPTYCH_GAME_MODULE
+    } else if (rgid == RG_DIPTYCH_FOREIGN) {
+        itemName = CustomMessage(Diptych_ForeignItemPhrase(rc, !inShop));
+        color = "%g";
+#endif
     } else if (inShop) {
         itemName = CustomMessage(Rando::StaticData::RetrieveItem(rgid).GetName());
     } else {

@@ -302,11 +302,18 @@ OTRGlobals::OTRGlobals() {
     context->InitResourceManager({ portArchivePath }, {}, 3, true);
     context->InitConsole();
 
-    auto sohInputEditorWindow =
-        std::make_shared<SohInputEditorWindow>(CVAR_WINDOW("ControllerConfiguration"), "Configure Controller");
-    sohFast3dWindow =
-        std::make_shared<Fast::Fast3dWindow>(std::vector<std::shared_ptr<Ship::GuiWindow>>({ sohInputEditorWindow }));
-    context->InitWindow(sohFast3dWindow);
+    if (context->GetWindow() == nullptr) {
+        auto sohInputEditorWindow =
+            std::make_shared<SohInputEditorWindow>(CVAR_WINDOW("ControllerConfiguration"), "Configure Controller");
+        sohFast3dWindow = std::make_shared<Fast::Fast3dWindow>(
+            std::vector<std::shared_ptr<Ship::GuiWindow>>({ sohInputEditorWindow }));
+        context->InitWindow(sohFast3dWindow);
+    } else {
+        // A second Fast3dWindow would replace the global renderer.
+        sohFast3dWindow = std::dynamic_pointer_cast<Fast::Fast3dWindow>(context->GetWindow());
+        context->GetWindow()->GetGui()->AddGuiWindow(
+            std::make_shared<SohInputEditorWindow>(CVAR_WINDOW("ControllerConfiguration"), "Configure Controller"));
+    }
 
     SohGui::SetupMenu();
 
@@ -373,12 +380,25 @@ bool PathTestCleanup(FILE* tfile) {
     return true;
 }
 
+#ifdef DIPTYCH_GAME_MODULE
+extern "C" int gDiptychHosted;
+#endif
+
+std::string HostedDataFolder(const std::string& folder) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (gDiptychHosted) {
+        return folder + "/soh";
+    }
+#endif
+    return folder;
+}
+
 void CheckAndCreateModFolder() {
     try {
-        std::string modsPath = Ship::Context::LocateFileAcrossAppDirs("mods", appShortName);
+        std::string modsPath = Ship::Context::LocateFileAcrossAppDirs(HostedDataFolder("mods"), appShortName);
         if (!std::filesystem::exists(modsPath)) {
             // Create mods folder relative to app dir
-            modsPath = Ship::Context::GetPathRelativeToAppDirectory("mods", appShortName);
+            modsPath = Ship::Context::GetPathRelativeToAppDirectory(HostedDataFolder("mods"), appShortName);
             std::string filePath = modsPath + "/custom_mod_files_go_here.txt";
             if (std::filesystem::create_directories(modsPath)) {
                 std::ofstream(filePath).close();
@@ -512,6 +532,12 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                 continue;
             }
             case ES_WINDOWS: {
+#ifdef DIPTYCH_GAME_MODULE
+                if (gDiptychHosted) {
+                    extractStep = args.empty() ? ES_EXTRACT : ES_EXTRACT_ARGS;
+                    continue;
+                }
+#endif
                 switch (windowsStep) {
                     case WS_TEMP: {
 #ifdef _WIN32
@@ -1008,7 +1034,12 @@ void OTRGlobals::ScaleImGui() {
     }
 
     float scale = imguiScaleOptionToValue[imGuiScaleIndex];
+#ifdef DIPTYCH_GAME_MODULE
+    // ImGui style is shared; scale relative to the applied scale, not this game's previous scale.
+    float newScale = scale / ImGui::GetIO().FontGlobalScale;
+#else
     float newScale = scale / previousImGuiScale;
+#endif
     ImGui::GetStyle().ScaleAllSizes(newScale);
     ImGui::GetIO().FontGlobalScale = scale;
     previousImGuiScale = scale;
@@ -1040,6 +1071,12 @@ extern "C" void AudioPlayer_Play(const uint8_t* buf, uint32_t len);
 int AudioPlayer_Buffered(void);
 extern "C" int AudioPlayer_GetDesiredBuffered(void);
 std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
+
+#ifdef DIPTYCH_GAME_MODULE
+#define OTRAUDIO_SUSPENDED() (audio.suspended.load())
+#else
+#define OTRAUDIO_SUSPENDED() false
+#endif
 
 void OTRAudio_Thread() {
 #define SAMPLES_HIGH 560
@@ -1093,11 +1130,11 @@ void OTRAudio_Thread() {
             if (!primed) {
                 // Pre-init: block until the gfx thread drives the first buffer
                 // (engine guaranteed ready by then), exactly as before.
-                while (!audio.processing && audio.running) {
+                while (!audio.processing && audio.running && !OTRAUDIO_SUSPENDED()) {
                     audio.cv_to_thread.wait(Lock);
                 }
-                primed = true;
-            } else if (!audio.processing && audio.running) {
+                primed = !OTRAUDIO_SUSPENDED();
+            } else if (!audio.processing && audio.running && !OTRAUDIO_SUSPENDED()) {
                 // Primed: wait for the next gfx wake, but no longer than
                 // kSelfPumpInterval so a stalled gfx thread can't starve the
                 // backend queue. A pending wake falls straight through.
@@ -1107,6 +1144,25 @@ void OTRAudio_Thread() {
             if (!audio.running) {
                 break;
             }
+
+#ifdef DIPTYCH_GAME_MODULE
+            if (audio.suspended) {
+                while (primed && AudioPlayer_Buffered() + SAMPLES_MID * AUDIO_FRAMES_PER_UPDATE <=
+                                     AudioPlayer_GetDesiredBuffered()) {
+                    produce_next_batch();
+                }
+                audio.parked = true;
+                audio.cv_from_thread.notify_all();
+                audio.cv_to_thread.wait(Lock, [] { return !audio.suspended || !audio.running; });
+                audio.parked = false;
+                if (!audio.running) {
+                    break;
+                }
+                if (!primed) {
+                    continue;
+                }
+            }
+#endif
         }
 
         {
@@ -1130,7 +1186,8 @@ void OTRAudio_Thread() {
         // Safe for BGM — the N64 sequencer advances independently of gameplay.
         // The producer guard (same as above) prevents advancing the audio engine
         // when the backend ring is already at capacity.
-        while (audio.running && AudioPlayer_Buffered() < AudioPlayer_GetDesiredBuffered()) {
+        while (audio.running && !OTRAUDIO_SUSPENDED() &&
+               AudioPlayer_Buffered() < AudioPlayer_GetDesiredBuffered()) {
             if (AudioPlayer_Buffered() + SAMPLES_MID * AUDIO_FRAMES_PER_UPDATE > AudioPlayer_GetDesiredBuffered()) {
                 break;
             }
@@ -1148,6 +1205,26 @@ void OTRAudio_Init() {
         audio.thread = std::thread(OTRAudio_Thread);
     }
 }
+
+#ifdef DIPTYCH_GAME_MODULE
+extern "C" void OTRAudio_Suspend() {
+    std::unique_lock<std::mutex> Lock(audio.mutex);
+    if (!audio.running) {
+        return;
+    }
+    audio.suspended = true;
+    audio.cv_to_thread.notify_all();
+    audio.cv_from_thread.wait(Lock, [] { return audio.parked || !audio.running; });
+}
+
+extern "C" void OTRAudio_Resume() {
+    {
+        std::unique_lock<std::mutex> Lock(audio.mutex);
+        audio.suspended = false;
+    }
+    audio.cv_to_thread.notify_all();
+}
+#endif
 
 // C->C++ Bridge
 extern "C" char** sequenceMap;
@@ -1545,6 +1622,12 @@ extern "C" void Messagebox_ShowErrorBox(char* title, char* body) {
 bool VerifyArchiveVersion(OTRVersion version) {
     return version.major != INT16_MAX && version.major != gBuildVersionMajor;
 }
+
+#ifdef DIPTYCH_GAME_MODULE
+bool Diptych_ArchiveCompatible(const std::string& path) {
+    return ReadPortVersionFromOTR(path).major == gBuildVersionMajor;
+}
+#endif
 
 #ifdef __linux__
 // When run as an AppImage, keep user data in ~/.local/share/soh instead of the launch folder.

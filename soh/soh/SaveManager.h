@@ -45,6 +45,7 @@ typedef enum {
 
 #ifdef __cplusplus
 
+#include <atomic>
 #include <map>
 #include <string>
 #include <functional>
@@ -87,6 +88,7 @@ class SaveManager {
     void SaveGlobal();
     void LoadFile(int fileNum);
     bool SaveFile_Exist(int fileNum);
+    bool IsFileRefused(int fileNum) const { return refusedSlots[fileNum]; }
     void ThreadPoolWait();
 
     // Adds a function that is called when we are intializing a save, including when we are loading a save.
@@ -153,6 +155,8 @@ class SaveManager {
     std::array<SaveFileMetaInfo, MaxFiles> fileMetaInfo;
 
   private:
+    bool RefuseUnsupportedDiptychSection(const nlohmann::json& file, int fileNum);
+    std::array<std::atomic<bool>, MaxFiles> refusedSlots{};
     std::filesystem::path GetFileName(int fileNum);
     std::filesystem::path GetFileTempName(int fileNum);
     nlohmann::json saveBlock;

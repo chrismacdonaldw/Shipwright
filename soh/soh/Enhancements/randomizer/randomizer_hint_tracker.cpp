@@ -172,6 +172,13 @@ void LoadHintTrackerData() {
     readHints = std::move(loaded);
 }
 
+#ifdef DIPTYCH_GAME_MODULE
+std::vector<RandomizerHint> ReadHints() {
+    std::lock_guard<std::mutex> lock(readHintsMutex);
+    return { readHints.begin(), readHints.end() };
+}
+#endif
+
 // Decodes the current save's player name, for substituting the '@' player
 // name marker that the in-game textbox resolves at draw time.
 static std::string GetPlayerName() {

@@ -7,6 +7,7 @@
 #include "../trial.h"
 #include "pool_functions.hpp"
 #include "soh/Enhancements/randomizer/randomizer_entrance_tracker.h"
+#include "soh/OTRGlobals.h"
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -377,8 +378,9 @@ void SpoilerLog_Write() {
     WriteShuffledEntrances();
     WriteAllLocations();
 
-    if (!std::filesystem::exists(Ship::Context::GetPathRelativeToAppDirectory("Randomizer"))) {
-        std::filesystem::create_directory(Ship::Context::GetPathRelativeToAppDirectory("Randomizer"));
+    const std::string spoilerFolder = HostedDataFolder("Randomizer");
+    if (!std::filesystem::exists(Ship::Context::GetPathRelativeToAppDirectory(spoilerFolder))) {
+        std::filesystem::create_directories(Ship::Context::GetPathRelativeToAppDirectory(spoilerFolder));
     }
 
     std::string jsonString = jsonData.dump(4);
@@ -394,11 +396,12 @@ void SpoilerLog_Write() {
     }
     std::string fileName = fileNameStream.str();
     std::ofstream jsonFile(Ship::Context::GetPathRelativeToAppDirectory(
-        (std::string("Randomizer/") + fileName + std::string(".json")).c_str()));
+        (spoilerFolder + std::string("/") + fileName + std::string(".json")).c_str()));
     jsonFile << std::setw(4) << jsonString << std::endl;
     jsonFile.close();
 
-    CVarSetString(CVAR_GENERAL("SpoilerLog"), (std::string("./Randomizer/") + fileName + std::string(".json")).c_str());
+    CVarSetString(CVAR_GENERAL("SpoilerLog"),
+                  (std::string("./") + spoilerFolder + std::string("/") + fileName + std::string(".json")).c_str());
 }
 
 void PlacementLog_Msg(std::string_view msg) {
@@ -407,4 +410,72 @@ void PlacementLog_Msg(std::string_view msg) {
 
 void PlacementLog_Clear() {
     placementtxt = "";
+}
+
+bool SpoilerLog_WriteDiptych(const std::string& path, const std::function<void(nlohmann::ordered_json&)>& patch) {
+    auto ctx = Rando::Context::GetInstance();
+
+    jsonData.clear();
+
+    jsonData["version"] = (char*)gBuildVersion;
+    jsonData["fileType"] = FILE_TYPE_SPOILER;
+    jsonData["git_branch"] = (char*)gGitBranch;
+    jsonData["git_commit"] = (char*)gGitCommitHash;
+    jsonData["seed"] = ctx->GetSeedString();
+    jsonData["finalSeed"] = ctx->GetSeed();
+
+    int index = 0;
+    for (uint8_t seed_value : ctx->hashIconIndexes) {
+        jsonData["file_hash"][index] = seed_value;
+        index++;
+    }
+
+    WriteSettings();
+    WriteExcludedLocations();
+    WriteStartingInventory();
+    WriteEnabledTricks();
+    WriteMasterQuestDungeons();
+    WriteChosenOptions();
+    WritePlaythrough();
+    ctx->WriteHintJson(jsonData);
+
+    std::vector<Entrance*> written;
+    if (!ctx->GetEntranceShuffler()->HasNoRandomEntrances()) {
+        for (int region = RR_ROOT; region < RR_MAX; region++) {
+            for (auto& exit : RegionTable(static_cast<RandomizerRegion>(region))->exits) {
+                const bool blueWarp =
+                    exit.GetType() == Rando::EntranceType::BlueWarp &&
+                    (ctx->GetOption(RSK_SHUFFLE_GANONS_TOWER_ENTRANCE) ||
+                     exit.GetParentRegionKey() != RR_GANONS_TOWER_STAIRS_1) &&
+                    (ctx->GetOption(RSK_SHUFFLE_DUNGEON_ENTRANCES) || ctx->GetOption(RSK_SHUFFLE_BOSS_ENTRANCES));
+                if (!(exit.IsShuffled() || blueWarp) || exit.IsAddedToPool() || exit.GetReplacement() == nullptr) {
+                    continue;
+                }
+                WriteShuffledEntrance("sphere 00", &exit);
+                exit.AddToPool();
+                written.push_back(&exit);
+                if (exit.GetReverse() != nullptr && exit.GetReplacement()->GetReverse() != nullptr &&
+                    !exit.IsDecoupled()) {
+                    exit.GetReplacement()->GetReverse()->AddToPool();
+                    written.push_back(exit.GetReplacement()->GetReverse());
+                }
+            }
+        }
+    }
+    for (Entrance* exit : written) {
+        exit->RemoveFromPool();
+    }
+    WriteAllLocations();
+
+    if (patch) {
+        patch(jsonData);
+    }
+
+    std::ofstream jsonFile(path);
+    if (!jsonFile) {
+        return false;
+    }
+    jsonFile << std::setw(4) << jsonData.dump(4) << std::endl;
+    jsonFile.close();
+    return static_cast<bool>(jsonFile);
 }

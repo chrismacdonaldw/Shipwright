@@ -283,7 +283,16 @@ s16 Entrance_PeekNextIndexOverride(int16_t nextEntranceIndex) {
     return Grotto_GetEntranceValueHandlingGrottoRando(Entrance_GetOverride(nextEntranceIndex));
 }
 
+#ifdef DIPTYCH_GAME_MODULE
+int Diptych_KeepDoorExit(s16 exitIndex);
+#endif
+
 s16 Entrance_OverrideNextIndex(s16 nextEntranceIndex) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (Diptych_KeepDoorExit(nextEntranceIndex)) {
+        return nextEntranceIndex;
+    }
+#endif
     // Exiting through the crawl space from Hyrule Castle courtyard is the same exit as leaving Ganon's castle
     // Don't override the entrance if we came from the Castle courtyard (day and night scenes)
     if (gPlayState != NULL &&

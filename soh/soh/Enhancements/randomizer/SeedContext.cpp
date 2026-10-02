@@ -399,6 +399,9 @@ GetItemEntry Context::GetFinalGIEntry(const RandomizerCheck rc, const bool check
         giEntry.drawModIndex = fakeGiEntry->drawModIndex;
         giEntry.drawFunc = fakeGiEntry->drawFunc;
     }
+#ifdef DIPTYCH_GAME_MODULE
+    giEntry.diptychCheck = itemLoc->GetPlacedRandomizerGet() == RG_DIPTYCH_FOREIGN ? rc : RC_UNKNOWN_CHECK;
+#endif
     return giEntry;
 }
 

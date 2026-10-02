@@ -324,6 +324,18 @@ static bool ConditionalAlwaysHintApplies(const ConditionalAlwaysHint& h) {
     return !h.extra || h.extra();
 }
 
+#ifdef DIPTYCH_SOH_WORLD
+std::vector<RandomizerCheck> Diptych_ConditionalAlwaysHints() {
+    std::vector<RandomizerCheck> out;
+    for (const auto& hint : conditionalAlwaysHints) {
+        if (ConditionalAlwaysHintApplies(hint)) {
+            out.push_back(hint.loc);
+        }
+    }
+    return out;
+}
+#endif
+
 static std::vector<RandomizerCheck> GetEmptyGossipStones() {
     auto emptyGossipStones = GetEmptyLocations(Rando::StaticData::GetGossipStoneLocations());
     return emptyGossipStones;
@@ -710,6 +722,12 @@ std::vector<RandomizerCheck> FindItemsAndMarkHinted(std::vector<RandomizerGet> i
     return locations;
 }
 
+static const std::vector<RandomizerGet> kChildAltarRewards = { RG_KOKIRI_EMERALD, RG_GORON_RUBY, RG_ZORA_SAPPHIRE };
+static const std::vector<RandomizerGet> kAdultAltarRewards = { RG_LIGHT_MEDALLION, RG_FOREST_MEDALLION,
+                                                               RG_FIRE_MEDALLION,  RG_WATER_MEDALLION,
+                                                               RG_SPIRIT_MEDALLION, RG_SHADOW_MEDALLION };
+static const std::vector<RandomizerGet> kGanondorfHintItems = { RG_LIGHT_ARROWS, RG_MASTER_SWORD };
+
 static void CreateAltarHint(RandomizerHint hintKey, HintType hintType, std::vector<RandomizerGet> rewards,
                             RandomizerCheck altarCheck) {
     auto ctx = Rando::Context::GetInstance();
@@ -728,6 +746,10 @@ static void CreateAltarHint(RandomizerHint hintKey, HintType hintType, std::vect
         for (auto loc : locs) {
             if (loc != RC_UNKNOWN_CHECK) {
                 areas.push_back(ctx->GetItemLocation(loc)->GetRandomArea());
+#ifdef DIPTYCH_GAME_MODULE
+            } else {
+                areas.push_back(RA_NONE);
+#endif
             }
         }
     }
@@ -735,15 +757,11 @@ static void CreateAltarHint(RandomizerHint hintKey, HintType hintType, std::vect
 }
 
 void CreateChildAltarHint() {
-    CreateAltarHint(RH_ALTAR_CHILD, HINT_TYPE_ALTAR_CHILD, { RG_KOKIRI_EMERALD, RG_GORON_RUBY, RG_ZORA_SAPPHIRE },
-                    RC_ALTAR_HINT_CHILD);
+    CreateAltarHint(RH_ALTAR_CHILD, HINT_TYPE_ALTAR_CHILD, kChildAltarRewards, RC_ALTAR_HINT_CHILD);
 }
 
 void CreateAdultAltarHint() {
-    CreateAltarHint(RH_ALTAR_ADULT, HINT_TYPE_ALTAR_ADULT,
-                    { RG_LIGHT_MEDALLION, RG_FOREST_MEDALLION, RG_FIRE_MEDALLION, RG_WATER_MEDALLION,
-                      RG_SPIRIT_MEDALLION, RG_SHADOW_MEDALLION },
-                    RC_ALTAR_HINT_ADULT);
+    CreateAltarHint(RH_ALTAR_ADULT, HINT_TYPE_ALTAR_ADULT, kAdultAltarRewards, RC_ALTAR_HINT_ADULT);
 }
 
 void CreateStaticHintFromData(RandomizerHint hint, StaticHintInfo staticData) {
@@ -811,13 +829,37 @@ void CreateGanondorfHint() {
             CreateStaticItemHint(
                 RH_GANONDORF_HINT,
                 { RHT_GANONDORF_HINT_LA_ONLY, RHT_GANONDORF_HINT_MS_ONLY, RHT_GANONDORF_HINT_LA_AND_MS },
-                { RG_LIGHT_ARROWS, RG_MASTER_SWORD }, { RC_GANONDORF_HINT }, true);
+                kGanondorfHintItems, { RC_GANONDORF_HINT }, true);
         } else {
             CreateStaticItemHint(RH_GANONDORF_HINT, { RHT_GANONDORF_HINT_LA_ONLY }, { RG_LIGHT_ARROWS },
                                  { RC_GANONDORF_HINT }, true);
         }
     }
 }
+
+#ifdef DIPTYCH_GAME_MODULE
+std::string Diptych_AbroadArea(RandomizerGet item);
+
+static std::vector<RandomizerGet> StaticHintTargetItems(RandomizerHint hint) {
+    switch (hint) {
+        case RH_ALTAR_CHILD:
+            return kChildAltarRewards;
+        case RH_ALTAR_ADULT:
+            return kAdultAltarRewards;
+        case RH_GANONDORF_HINT:
+            return kGanondorfHintItems;
+        default:
+            auto info = StaticData::staticHintInfoMap.find(hint);
+            return info != StaticData::staticHintInfoMap.end() ? info->second.targetItems
+                                                               : std::vector<RandomizerGet>{};
+    }
+}
+
+std::string Diptych_StaticHintAbroadArea(RandomizerHint hint, size_t slot) {
+    const std::vector<RandomizerGet> targets = StaticHintTargetItems(hint);
+    return slot < targets.size() ? Diptych_AbroadArea(targets[slot]) : "";
+}
+#endif
 
 void CreateStaticHints() {
     CreateChildAltarHint();

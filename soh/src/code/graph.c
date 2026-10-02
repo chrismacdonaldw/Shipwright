@@ -512,6 +512,10 @@ void Graph_ThreadEntry(void* arg0) {
     }
 }
 
+void Graph_RunFrame(void) {
+    RunFrame();
+}
+
 void* Graph_Alloc(GraphicsContext* gfxCtx, size_t size) {
     TwoHeadGfxArena* thga = &gfxCtx->polyOpa;
 

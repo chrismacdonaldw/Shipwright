@@ -989,6 +989,38 @@ bool GenerateRandomizer(std::string seed /*= ""*/) {
     return true;
 }
 
+#ifdef DIPTYCH_GAME_MODULE
+bool Rando_RunOnGeneratorThread(std::function<void()> work, std::string& error,
+                                std::thread (*launch)(std::function<void()>)) {
+    if (randoGenerating) {
+        error = "the generator is busy";
+        return false;
+    }
+    try {
+        WaitForRandoGeneration();
+        randoGenerating = true;
+        auto body = [work = std::move(work)]() {
+            struct Done {
+                ~Done() {
+                    randoGenerating = false;
+                }
+            } done;
+            work();
+        };
+        randoThread = launch != nullptr ? launch(std::move(body)) : std::thread(std::move(body));
+    } catch (const std::exception& e) {
+        randoGenerating = false;
+        error = std::string("thread start failed: ") + e.what();
+        return false;
+    } catch (...) {
+        randoGenerating = false;
+        error = "thread start failed";
+        return false;
+    }
+    return true;
+}
+#endif
+
 static bool locationsTabOpen = false;
 static bool tricksTabOpen = false;
 
@@ -1464,6 +1496,10 @@ extern "C" u16 Randomizer_Item_Give(PlayState* play, GetItemEntry giEntry) {
             }
             break;
         }
+#ifdef DIPTYCH_GAME_MODULE
+        case RG_DIPTYCH_FOREIGN:
+            break;
+#endif
         default:
             SPDLOG_WARN("Randomizer_Item_Give didn't have behaviour specified for getItemId={}", item);
             assert(false);

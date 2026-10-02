@@ -3,11 +3,19 @@
 #ifdef __cplusplus
 
 #include <thread>
+#ifdef DIPTYCH_GAME_MODULE
+#include <atomic>
+#include <mutex>
+#endif
 #include <SDL2/SDL_net.h>
 #include <nlohmann/json.hpp>
 
 class Network {
   private:
+#ifdef DIPTYCH_GAME_MODULE
+    std::mutex socketMutex;
+    std::atomic<bool> sendFailed{false};
+#endif
     IPaddress networkAddress;
     TCPsocket networkSocket;
     std::thread receiveThread;
@@ -18,8 +26,13 @@ class Network {
     void HandleRemoteJson(std::string payload);
 
   public:
+#ifdef DIPTYCH_GAME_MODULE
+    std::atomic<bool> isEnabled{false};
+    std::atomic<bool> isConnected{false};
+#else
     bool isEnabled;
     bool isConnected;
+#endif
 
     void Enable(const char* host, uint16_t port);
     void Disable();

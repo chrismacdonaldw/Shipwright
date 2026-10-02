@@ -11,6 +11,9 @@
 #include <soh/OTRGlobals.h>
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
+#ifdef DIPTYCH_GAME_MODULE
+#include "soh/DiptychModule_ForeignItems.h"
+#endif
 
 extern "C" {
 #include "z64scene.h"
@@ -26,6 +29,16 @@ extern PlayState* gPlayState;
     RAND_GET_OPTION(RSK_KAK_10_SKULLS_HINT) || RAND_GET_OPTION(RSK_KAK_20_SKULLS_HINT) ||     \
         RAND_GET_OPTION(RSK_KAK_30_SKULLS_HINT) || RAND_GET_OPTION(RSK_KAK_40_SKULLS_HINT) || \
         RAND_GET_OPTION(RSK_KAK_50_SKULLS_HINT)
+
+static CustomMessage PlacedItemHint(RandomizerCheck rc) {
+    const RandomizerGet rg = RAND_GET_ITEM_LOC(rc)->GetPlacedRandomizerGet();
+#ifdef DIPTYCH_GAME_MODULE
+    if (rg == RG_DIPTYCH_FOREIGN) {
+        return CustomMessage(Diptych_ForeignItemPhrase(rc, true));
+    }
+#endif
+    return Rando::StaticData::RetrieveItem(rg).GetHint().GetHintMessage();
+}
 
 // Resolves a hint's message for textbox display, firing OnRandoHintRevealed so
 // observers such as the Hint Tracker know the player has seen the hint.
@@ -151,7 +164,7 @@ void BuildSkulltulaPeopleMessage(uint16_t* textId, bool* loadFromMessageTable) {
                                       "et j'aurai quelque chose à te donner! [[color]]([[1]])%w");
     msg.InsertNumber(count);
     msg.Replace("[[color]]", item.GetColor());
-    msg.InsertNames({ item.GetHint().GetHintMessage() });
+    msg.InsertNames({ PlacedItemHint(rc) });
     msg.AutoFormat();
     msg.LoadIntoFont();
     *loadFromMessageTable = false;
@@ -169,7 +182,7 @@ void Build100SkullsHintMessage(uint16_t* textId, bool* loadFromMessageTable) {
     Rando::Item& item =
         Rando::StaticData::RetrieveItem(RAND_GET_ITEM_LOC(RC_KAK_100_GOLD_SKULLTULA_REWARD)->GetPlacedRandomizerGet());
     msg.Replace("[[color]]", item.GetColor());
-    msg.InsertNames({ item.GetHint().GetHintMessage() });
+    msg.InsertNames({ PlacedItemHint(RC_KAK_100_GOLD_SKULLTULA_REWARD) });
     msg.AutoFormat();
     msg.LoadIntoFont();
     *loadFromMessageTable = false;

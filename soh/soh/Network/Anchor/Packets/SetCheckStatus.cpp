@@ -15,6 +15,9 @@ static bool isResultOfHandling = false;
  */
 
 void Anchor::SendPacket_SetCheckStatus(RandomizerCheck rc) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (!SyncOn()) return;
+#endif
     if (!IsSaveLoaded() || isResultOfHandling) {
         return;
     }
@@ -33,31 +36,35 @@ void Anchor::SendPacket_SetCheckStatus(RandomizerCheck rc) {
     SendJsonToRemote(payload);
 }
 
-void Anchor::HandlePacket_SetCheckStatus(nlohmann::json payload) {
-    if (!IsSaveLoaded() || !roomState.syncItemsAndFlags) {
-        return;
+// The paired-save bridge calls this same native effect under its owning-save identity gate.
+// Raw stock packets still require SyncOn and cannot cross paired item/receipt ownership.
+bool Anchor_ApplyCheckMetadata(RandomizerCheck rc, int status, bool skipped, bool protectObtained) {
+    if (rc < 0 || rc >= RC_MAX) return false;
+    auto location = Rando::Context::GetInstance()->GetItemLocation(rc);
+    bool changed = false;
+    const bool handling = isResultOfHandling;
+    isResultOfHandling = true;
+    if (status >= 0 && (!protectObtained || !location->HasObtained()) &&
+        location->GetCheckStatus() != status) {
+        location->SetCheckStatus(static_cast<RandomizerCheckStatus>(status));
+        changed = true;
     }
+    if (location->GetIsSkipped() != skipped) {
+        location->SetIsSkipped(skipped);
+        changed = true;
+    }
+    isResultOfHandling = handling;
+    return changed;
+}
 
-    auto randoContext = Rando::Context::GetInstance();
-
+void Anchor::HandlePacket_SetCheckStatus(nlohmann::json payload) {
+    if (!IsSaveLoaded() || !SyncOn()) return;
     RandomizerCheck rc = payload.at("rc").get<RandomizerCheck>();
     if (rc < 0 || rc >= RC_MAX) {
         SPDLOG_ERROR("[Anchor] SET_CHECK_STATUS: {} out of range", rc);
         return;
     }
-    RandomizerCheckStatus status = payload.at("status").get<RandomizerCheckStatus>();
-    bool skipped = payload.at("skipped").get<bool>();
-
-    isResultOfHandling = true;
-
-    if (randoContext->GetItemLocation(rc)->GetCheckStatus() != status) {
-        randoContext->GetItemLocation(rc)->SetCheckStatus(status);
-    }
-    if (randoContext->GetItemLocation(rc)->GetIsSkipped() != skipped) {
-        randoContext->GetItemLocation(rc)->SetIsSkipped(skipped);
-    }
-
+    Anchor_ApplyCheckMetadata(rc, payload.at("status").get<int>(), payload.at("skipped").get<bool>(), false);
     CheckTracker::RecalculateAllAreaTotals();
     CheckTracker::RecalculateAvailableChecks();
-    isResultOfHandling = false;
 }

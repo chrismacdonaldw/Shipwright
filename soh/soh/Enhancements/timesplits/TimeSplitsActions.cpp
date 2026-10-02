@@ -38,6 +38,11 @@ static const LegacySplitId legacySplitIds[] = {
 };
 
 nlohmann::json TimesplitObject_to_json(const TimesplitObject& split) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (splitSource != nullptr) {
+        return splitSource->toFile(split);
+    }
+#endif
     return nlohmann::json{
         { "splitId", split.splitId },
         { "splitName", split.splitName },
@@ -49,6 +54,11 @@ nlohmann::json TimesplitObject_to_json(const TimesplitObject& split) {
 }
 
 TimesplitObject json_to_TimesplitObject(const nlohmann::json& jsonSplit) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (splitSource != nullptr) {
+        return splitSource->fromFile(jsonSplit);
+    }
+#endif
     TimesplitObject split;
     split.splitId = jsonSplit["splitId"];
     split.splitName = jsonSplit["splitName"].get<std::string>();
@@ -264,6 +274,11 @@ void UpdateSplitStatusByUpgrades() {
 
 void SplitLoadComparisonList() {
     std::string filename = Ship::Context::GetPathRelativeToAppDirectory("SoHTimeSplitData.json");
+#ifdef DIPTYCH_GAME_MODULE
+    if (splitSource != nullptr) {
+        filename = splitSource->filePath();
+    }
+#endif
     json compareFile;
     json listArray = nlohmann::json::array();
 
@@ -290,6 +305,11 @@ void SplitSaveFileAction(uint32_t action, std::string listName) {
         filename = Ship::Context::GetPathRelativeToAppDirectory("timesplitdata.json");
     } else {
         filename = Ship::Context::GetPathRelativeToAppDirectory("SoHTimeSplitData.json");
+#ifdef DIPTYCH_GAME_MODULE
+        if (splitSource != nullptr) {
+            filename = splitSource->filePath();
+        }
+#endif
     }
 
     json saveFile;

@@ -71,4 +71,7 @@ typedef struct GetItemEntry {
     /* 0x11 */ uint16_t drawModIndex; // Will be a copy of modIndex unless the item is an ice trap. Needed for particles
                                       // to function on ice traps.
     CustomDrawFunc drawFunc;
+#ifdef DIPTYCH_GAME_MODULE
+    uint16_t diptychCheck;
+#endif
 } GetItemEntry; // size = 0x11

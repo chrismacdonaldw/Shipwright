@@ -15,19 +15,23 @@
  */
 
 void Anchor::SendPacket_RequestTeamState() {
-    if (!IsSaveLoaded() || !roomState.syncItemsAndFlags) {
+    if (!IsSaveLoaded() || !SyncOn()) {
         return;
     }
 
     nlohmann::json payload;
     payload["type"] = REQUEST_TEAM_STATE;
+#ifdef DIPTYCH_GAME_MODULE
+    payload["targetTeamId"] = diptychTransport.Read().teamId;
+#else
     payload["targetTeamId"] = CVarGetString(CVAR_REMOTE_ANCHOR("TeamId"), "default");
+#endif
 
     SendJsonToRemote(payload);
 }
 
 void Anchor::HandlePacket_RequestTeamState(nlohmann::json payload) {
-    if (!IsSaveLoaded() || !roomState.syncItemsAndFlags) {
+    if (!IsSaveLoaded() || !SyncOn()) {
         return;
     }
 

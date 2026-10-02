@@ -25,7 +25,7 @@ extern PlayState* gPlayState;
  */
 
 void Anchor::SendPacket_UpdateTeamState() {
-    if (!IsSaveLoaded() || !roomState.syncItemsAndFlags) {
+    if (!IsSaveLoaded() || !SyncOn()) {
         return;
     }
 
@@ -119,7 +119,7 @@ void Anchor::SendPacket_ClearTeamState(std::string teamId) {
 }
 
 void Anchor::HandlePacket_UpdateTeamState(nlohmann::json payload) {
-    if (!roomState.syncItemsAndFlags) {
+    if (!SyncOn()) {
         return;
     }
 
@@ -308,7 +308,16 @@ void Anchor::HandlePacket_UpdateTeamState(nlohmann::json payload) {
         std::lock_guard<std::mutex> lock(incomingPacketQueueMutex);
         for (auto& item : payload["queue"]) {
             nlohmann::json itemPayload = nlohmann::json::parse(item.get<std::string>());
+#ifdef DIPTYCH_GAME_MODULE
+            if (itemPayload.is_object() && itemPayload.contains("type") && itemPayload["type"].is_string() &&
+                DiptychNet::Transport::DiptychPacket(itemPayload["type"].get<std::string>())) {
+                SPDLOG_WARN("[Anchor] Dropped Diptych packet from team snapshot");
+                continue;
+            }
+            diptychTransport.Receive(std::move(itemPayload));
+#else
             incomingPacketQueue.push(itemPayload);
+#endif
         }
     }
     isHandlingUpdateTeamState = false;

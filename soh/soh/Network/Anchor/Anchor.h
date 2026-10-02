@@ -8,6 +8,9 @@
 #include <spdlog/spdlog.h>
 #include <queue>
 #include <mutex>
+#ifdef DIPTYCH_GAME_MODULE
+#include "DiptychAnchorTransport.h"
+#endif
 
 extern "C" {
 #include "variables.h"
@@ -112,6 +115,18 @@ class Anchor : public Network {
     void HandlePacket_UpdateTeamState(nlohmann::json payload);
 
   public:
+#ifdef DIPTYCH_GAME_MODULE
+    bool networkStopPending = false;
+    DiptychNet::Transport diptychTransport;
+    void PublishSnapshot(bool suspended = false);
+    void InstallFrameHook();
+    void PumpNetworkControl();
+    void SuspendNetwork();
+    void ResumeNetwork();
+    bool SyncOn();
+#else
+    bool SyncOn() { return roomState.syncItemsAndFlags; }
+#endif
     uint32_t ownClientId;
     inline static const std::string clientVersion = (char*)gGitCommitHash;
 

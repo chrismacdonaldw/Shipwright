@@ -1,4 +1,12 @@
 #include "SaveManager.h"
+#ifdef DIPTYCH_GAME_MODULE
+#include <atomic>
+#include "../../../host/native_save.h"
+static std::atomic<uint64_t> sDiptychBaseWrites[3]{};
+uint64_t SaveManager_BaseWriteSerial(int slot) {
+    return slot >= 0 && slot < 3 ? sDiptychBaseWrites[slot].load() : 0;
+}
+#endif
 #include "OTRGlobals.h"
 #include "Enhancements/game-interactor/GameInteractor.h"
 #include "Enhancements/randomizer/SeedContext.h"
@@ -305,7 +313,13 @@ void SaveManager::SaveRandomizer(SaveContext* saveContext, int sectionID, bool f
     SaveManager::Instance->SaveArray("itemLocations", RC_MAX, [&](size_t i) {
         SaveManager::Instance->SaveStruct("", [&]() {
             SaveManager::Instance->SaveData("rgID", randoContext->GetItemLocation(i)->GetPlacedRandomizerGet());
+#ifdef DIPTYCH_GAME_MODULE
+            if (randoContext->GetItemLocation(i)->GetPlacedRandomizerGet() == RG_ICE_TRAP ||
+                (randoContext->GetItemLocation(i)->GetPlacedRandomizerGet() == RG_DIPTYCH_FOREIGN &&
+                 randoContext->overrides.contains(static_cast<RandomizerCheck>(i)))) {
+#else
             if (randoContext->GetItemLocation(i)->GetPlacedRandomizerGet() == RG_ICE_TRAP) {
+#endif
                 SaveManager::Instance->SaveData("fakeRgID", randoContext->GetItemOverride(i).LooksLike());
                 SaveManager::Instance->SaveStruct("trickName", [&]() {
                     SaveManager::Instance->SaveData("english",
@@ -547,6 +561,29 @@ static void RegisterUnreadableSavePopup(int fileNum) {
                                                  "The file has been left on disk untouched.");
 }
 
+bool SaveManager::RefuseUnsupportedDiptychSection(const nlohmann::json& file, int fileNum) {
+    const auto sections = file.find("sections");
+    if (sections == file.end() || !sections->is_object()) return false;
+    const auto section = sections->find("diptych");
+    if (section == sections->end()) return false;
+    const auto version = section->find("version");
+    const auto handler = sectionLoadHandlers.find("diptych");
+    if (version != section->end() && version->is_number_integer() && handler != sectionLoadHandlers.end()) {
+        for (const auto& entry : handler->second) {
+            if (*version == entry.first) return false;
+        }
+    }
+    refusedSlots[fileNum] = true;
+    fileMetaInfo[fileNum].valid = false;
+    SPDLOG_ERROR("Save {} refused: unsupported diptych section version {}", GetFileName(fileNum).string(),
+                 version == section->end() ? "missing" : version->dump());
+    SohGui::RegisterPopup("Save version unsupported",
+                         "The save in slot " + std::to_string(fileNum + 1) +
+                             " uses an unsupported diptych section version.\nOpen it with a newer Hark version.\n"
+                             "The file has been left untouched.");
+    return true;
+}
+
 void SaveManager::StartupCheckAndInitMeta(int fileNum) {
     SPDLOG_INFO("Init Meta - fileNum: {}", fileNum);
     std::filesystem::path fileName = GetFileName(fileNum);
@@ -563,6 +600,7 @@ void SaveManager::StartupCheckAndInitMeta(int fileNum) {
             return;
         }
     }
+    if (RefuseUnsupportedDiptychSection(metaSaveBlock, fileNum)) return;
     if (!metaSaveBlock.contains("version")) {
         SPDLOG_ERROR("Save at {} contains no version", fileName.string());
         assert(false);
@@ -1251,6 +1289,12 @@ int copy_file(const char* src, const char* dst) {
 
 void SaveManager::SaveFileThreaded(int fileNum, SaveContext* saveContext, int sectionID) {
     saveMtx.lock();
+    if (refusedSlots[fileNum]) {
+        delete saveContext;
+        saveMtx.unlock();
+        SPDLOG_ERROR("Save {} refused: unsupported diptych section", GetFileName(fileNum).string());
+        return;
+    }
     SPDLOG_INFO("Save File - fileNum: {}", fileNum);
     // Needed for first time save, hasn't changed in forever anyway
     saveBlock["version"] = 1;
@@ -1295,6 +1339,21 @@ void SaveManager::SaveFileThreaded(int fileNum, SaveContext* saveContext, int se
     std::filesystem::path fileName = GetFileName(fileNum);
     std::filesystem::path tempFile = GetFileTempName(fileNum);
 
+#ifdef DIPTYCH_GAME_MODULE
+    bool published = false;
+    try {
+        published = native_save::Publish(fileName, saveBlock.dump(1) + "\n");
+    } catch (...) {}
+    if (!published) {
+        delete saveContext;
+        saveMtx.unlock();
+        SPDLOG_ERROR("Save File failed - fileNum: {}", fileNum);
+        return;
+    }
+    if (fileNum >= 0 && fileNum < 3 && sectionID == SECTION_ID_BASE) {
+        sDiptychBaseWrites[fileNum]++;
+    }
+#else
     if (std::filesystem::exists(tempFile)) {
         std::filesystem::remove(tempFile);
     }
@@ -1322,6 +1381,7 @@ void SaveManager::SaveFileThreaded(int fileNum, SaveContext* saveContext, int se
     std::filesystem::rename(tempFile, fileName);
 #endif
 
+#endif
     delete saveContext;
     InitMeta(fileNum);
     GameInteractor::Instance->ExecuteHooks<GameInteractor::OnSaveFile>(fileNum, sectionID);
@@ -1373,7 +1433,6 @@ void SaveManager::LoadFile(int fileNum) {
     SPDLOG_INFO("Load File - fileNum: {}", fileNum);
     std::filesystem::path fileName = GetFileName(fileNum);
     assert(std::filesystem::exists(fileName));
-    InitFile(false);
 
     std::ifstream input(fileName);
 
@@ -1381,6 +1440,11 @@ void SaveManager::LoadFile(int fileNum) {
         saveBlock = nlohmann::json::object();
         input >> saveBlock;
         input.close();
+        if (RefuseUnsupportedDiptychSection(saveBlock, fileNum)) {
+            saveMtx.unlock();
+            return;
+        }
+        InitFile(false);
         if (!saveBlock.contains("version")) {
             SPDLOG_ERROR("Save at {} contains no version", fileName.string());
             assert(false);
@@ -2509,6 +2573,7 @@ void SaveManager::LoadStruct(const std::string& name, LoadStructFunc func) {
 }
 
 void SaveManager::CopyZeldaFile(int from, int to) {
+    if (refusedSlots[to]) return;
     assert(std::filesystem::exists(GetFileName(from)));
     DeleteZeldaFile(to);
 #if defined(__WIIU__) || defined(__SWITCH__)
@@ -2519,10 +2584,20 @@ void SaveManager::CopyZeldaFile(int from, int to) {
     fileMetaInfo[to] = fileMetaInfo[from];
 }
 
+#ifdef DIPTYCH_GAME_MODULE
+bool Diptych_BeforeDeleteFile(int fileNum);
+#endif
+
 void SaveManager::DeleteZeldaFile(int fileNum) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (!Diptych_BeforeDeleteFile(fileNum)) {
+        return;
+    }
+#endif
     if (std::filesystem::exists(GetFileName(fileNum))) {
         std::filesystem::remove(GetFileName(fileNum));
     }
+    refusedSlots[fileNum] = false;
     fileMetaInfo[fileNum].valid = false;
     fileMetaInfo[fileNum].randoSave = false;
     fileMetaInfo[fileNum].requiresMasterQuest = false;

@@ -98,7 +98,9 @@ void Anchor::RegisterHooks() {
         SendPacket_PlayerUpdate();
     });
 
+#ifndef DIPTYCH_GAME_MODULE
     COND_HOOK(OnGameFrameUpdate, isConnected, [&]() { ProcessIncomingPacketQueue(); });
+#endif
 
     COND_HOOK(OnPlayerSfx, isConnected, [&](u16 sfxId) { SendPacket_PlayerSfx(sfxId); });
     COND_HOOK(OnOcarinaNote, isConnected,
