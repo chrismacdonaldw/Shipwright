@@ -45,6 +45,17 @@ class SohMenu : public Ship::Menu {
     void AddMenuNetwork();
     static void UpdateLanguageMap(std::map<int32_t, const char*>& languageMap);
 
+    struct CVarWidgetDescriptor {
+        std::string cvar, label, tooltip, sidebar, format;
+        uint32_t column = 0;
+        WidgetType type = WIDGET_CVAR_CHECKBOX;
+        double defaultValue = 0, min = 0, max = 1;
+        std::map<int32_t, std::string> choices;
+    };
+    // Copies registered metadata without drawing widgets or running their callbacks.
+    // False means unavailable; a successful empty result is a valid empty catalogue.
+    bool GetRandomizerEnhancements(std::vector<CVarWidgetDescriptor>& descriptors) const;
+
   private:
     char mGitCommitHashTruncated[8];
     bool mIsTaggedVersion;

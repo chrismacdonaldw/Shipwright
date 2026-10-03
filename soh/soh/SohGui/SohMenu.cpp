@@ -2,6 +2,7 @@
 #include <ship/Context.h>
 
 #include "SohMenu.h"
+#include "soh/cvar_prefixes.h"
 
 extern "C" {
 extern PlayState* gPlayState;
@@ -81,6 +82,72 @@ WidgetInfo& SohMenu::AddWidget(WidgetPath& pathInfo, std::string widgetName, Wid
 
 SohMenu::SohMenu(const std::string& consoleVariable, const std::string& name)
     : Menu(consoleVariable, name, 0, UIWidgets::Colors::LightBlue) {
+}
+
+bool SohMenu::GetRandomizerEnhancements(std::vector<CVarWidgetDescriptor>& descriptors) const {
+    if (!mMenuElementsInitialized || !menuEntries.contains("Randomizer")) return false;
+    const auto& sidebars = menuEntries.at("Randomizer").sidebars;
+    if (!sidebars.contains("General")) return false;
+    std::vector<CVarWidgetDescriptor> result;
+    const auto& columns = sidebars.at("General").columnWidgets;
+    for (size_t column = 0; column < columns.size(); ++column) {
+        for (const WidgetInfo& widget : columns[column]) {
+            // Non-CVar registrations need not initialize cVar.
+            if (widget.type != WIDGET_CVAR_CHECKBOX && widget.type != WIDGET_CVAR_COMBOBOX &&
+                widget.type != WIDGET_CVAR_SLIDER_INT && widget.type != WIDGET_CVAR_SLIDER_FLOAT) continue;
+            if (!widget.cVar || !std::string(widget.cVar).starts_with(CVAR_RANDOMIZER_ENHANCEMENT(""))) continue;
+            if (!widget.options) return false;
+            CVarWidgetDescriptor descriptor;
+            descriptor.cvar = widget.cVar;
+            descriptor.label = widget.name.substr(0, widget.name.find("##"));
+            descriptor.tooltip = widget.options->tooltip;
+            descriptor.sidebar = "General";
+            descriptor.column = static_cast<uint32_t>(column);
+            descriptor.type = widget.type;
+            switch (widget.type) {
+                case WIDGET_CVAR_CHECKBOX:
+                    descriptor.defaultValue = std::static_pointer_cast<CheckboxOptions>(widget.options)->defaultValue;
+                    break;
+                case WIDGET_CVAR_COMBOBOX: {
+                    const auto options = std::static_pointer_cast<ComboboxOptions>(widget.options);
+                    descriptor.defaultValue = options->defaultIndex;
+                    for (const auto& [id, label] : options->comboMap) descriptor.choices.emplace(id, label);
+                    if (!descriptor.choices.empty()) {
+                        descriptor.min = descriptor.choices.begin()->first;
+                        descriptor.max = descriptor.choices.rbegin()->first;
+                    }
+                    break;
+                }
+                case WIDGET_CVAR_SLIDER_INT: {
+                    const auto options = std::static_pointer_cast<IntSliderOptions>(widget.options);
+                    descriptor.defaultValue = options->defaultValue;
+                    descriptor.min = options->min;
+                    descriptor.max = options->max;
+                    descriptor.format = options->format;
+                    break;
+                }
+                case WIDGET_CVAR_SLIDER_FLOAT: {
+                    const auto options = std::static_pointer_cast<FloatSliderOptions>(widget.options);
+                    descriptor.defaultValue = options->defaultValue;
+                    descriptor.min = options->min;
+                    descriptor.max = options->max;
+                    descriptor.format = options->format;
+                    break;
+                }
+                default: break;
+            }
+            // Slider labels contain the value format used by the native renderer.
+            // A metadata consumer needs the human label and format separately.
+            if (!descriptor.format.empty() && descriptor.label.ends_with(descriptor.format)) {
+                descriptor.label.resize(descriptor.label.size() - descriptor.format.size());
+                const auto end = descriptor.label.find_last_not_of(" :\t");
+                descriptor.label.resize(end == std::string::npos ? 0 : end + 1);
+            }
+            result.push_back(std::move(descriptor));
+        }
+    }
+    descriptors = std::move(result);
+    return true;
 }
 
 void SohMenu::AddMenuElements() {
