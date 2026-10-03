@@ -1,7 +1,10 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <string>
+
+#include <nlohmann/json.hpp>
 
 using RandomizerHash = std::array<std::string, 5>;
 
@@ -21,3 +24,5 @@ typedef enum {
 void GenerateHash();
 
 void SpoilerLog_Write();
+
+bool SpoilerLog_WriteDiptych(const std::string& path, const std::function<void(nlohmann::ordered_json&)>& patch);

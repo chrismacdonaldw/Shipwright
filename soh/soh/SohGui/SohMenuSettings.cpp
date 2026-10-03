@@ -13,6 +13,10 @@ extern "C" {
 #include "include/z64audio.h"
 #include "variables.h"
 }
+#ifdef DIPTYCH_GAME_MODULE
+extern "C" void gfx_shader_cache_clear();
+bool Diptych_ControlsLinked();
+#endif
 
 namespace SohGui {
 
@@ -424,10 +428,26 @@ void SohMenu::AddMenuSettings() {
         .Options(CheckboxOptions()
                      .Tooltip("Allows multiple windows to be opened at once. Requires a reload to take effect.")
                      .DefaultValue(true));
+#ifdef DIPTYCH_GAME_MODULE
+    AddWidget(path, "Texture Filter", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_TEXTURE_FILTER)
+        .RaceDisable(false)
+        .Callback([](WidgetInfo& info) {
+            auto window =
+                std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
+            if (window != nullptr) {
+                window->SetTextureFilter(
+                    (Fast::FilteringMode)CVarGetInteger(CVAR_TEXTURE_FILTER, Fast::FILTER_THREE_POINT));
+                gfx_shader_cache_clear();
+            }
+        })
+        .Options(ComboboxOptions().Tooltip("Sets the applied Texture Filtering.").ComboMap(textureFilteringMap));
+#else
     AddWidget(path, "Texture Filter (Needs reload)", WIDGET_CVAR_COMBOBOX)
         .CVar(CVAR_TEXTURE_FILTER)
         .RaceDisable(false)
         .Options(ComboboxOptions().Tooltip("Sets the applied Texture Filtering.").ComboMap(textureFilteringMap));
+#endif
 
     path.column = SECTION_COLUMN_2;
     AddWidget(path, "Advanced Graphics Options", WIDGET_SEPARATOR_TEXT);
@@ -440,6 +460,12 @@ void SohMenu::AddMenuSettings() {
         .Callback([](WidgetInfo& info) {
             SohGui::mModalWindow->RegisterPopup(
                 "Clear Config",
+#ifdef DIPTYCH_GAME_MODULE
+                Diptych_ControlsLinked()
+                    ? "This will completely erase the controls config of both games, including registered "
+                      "devices.\nContinue?"
+                    :
+#endif
                 "This will completely erase the controls config, including registered devices.\nContinue?", "Clear",
                 "Cancel",
                 []() {
@@ -450,7 +476,11 @@ void SohMenu::AddMenuSettings() {
                 },
                 nullptr);
         })
+#ifdef DIPTYCH_GAME_MODULE
+        .Options(ButtonOptions().Size(Sizes::Inline).Tooltip("Also clears MM's bindings while controls are linked."));
+#else
         .Options(ButtonOptions().Size(Sizes::Inline));
+#endif
     AddWidget(path, "Controller Bindings", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Popout Bindings Window", WIDGET_WINDOW_BUTTON)
         .CVar(CVAR_WINDOW("ControllerConfiguration"))

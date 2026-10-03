@@ -5104,6 +5104,10 @@ static u8 sReturnEntranceGroupIndices[] = {
     0,  // ENTR_RETURN_GREAT_FAIRYS_FOUNTAIN_MAGIC
 };
 
+#ifdef DIPTYCH_GAME_MODULE
+int Diptych_KeepDoorExit(s16 exitIndex);
+#endif
+
 s32 Player_HandleExitsAndVoids(PlayState* play, Player* this, CollisionPoly* poly, u32 bgId) {
     s32 exitIndex;
     s32 temp;
@@ -5136,7 +5140,11 @@ s32 Player_HandleExitsAndVoids(PlayState* play, Player* this, CollisionPoly* pol
                 play->nextEntranceIndex = play->setupExitList[exitIndex - 1];
 
                 // Main override for entrance rando and entrance skips
-                if (IS_RANDO) {
+                if (
+#ifdef DIPTYCH_GAME_MODULE
+                    !Diptych_KeepDoorExit(play->nextEntranceIndex) &&
+#endif
+                    IS_RANDO) {
                     play->nextEntranceIndex = Entrance_OverrideNextIndex(play->nextEntranceIndex);
                 }
 

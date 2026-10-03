@@ -45,6 +45,7 @@ typedef enum {
 
 #ifdef __cplusplus
 
+#include <atomic>
 #include <map>
 #include <string>
 #include <functional>
@@ -66,7 +67,7 @@ class SaveManager {
 
     using InitFunc = void (*)(bool isDebug);
     using LoadFunc = void (*)();
-    using SaveFunc = void (*)(SaveContext* saveContext, int sectionID, bool fullSave);
+    using SaveFunc = void (*)(const SaveContext& saveContext, int sectionID, bool fullSave);
     using PostFunc = void (*)(int version);
 
     typedef struct {
@@ -87,6 +88,7 @@ class SaveManager {
     void SaveGlobal();
     void LoadFile(int fileNum);
     bool SaveFile_Exist(int fileNum);
+    bool IsFileRefused(int fileNum) const { return refusedSlots[fileNum]; }
     void ThreadPoolWait();
 
     // Adds a function that is called when we are intializing a save, including when we are loading a save.
@@ -153,6 +155,8 @@ class SaveManager {
     std::array<SaveFileMetaInfo, MaxFiles> fileMetaInfo;
 
   private:
+    bool RefuseUnsupportedDiptychSection(const nlohmann::json& file, int fileNum);
+    std::array<std::atomic<bool>, MaxFiles> refusedSlots{};
     std::filesystem::path GetFileName(int fileNum);
     std::filesystem::path GetFileTempName(int fileNum);
     nlohmann::json saveBlock;
@@ -160,7 +164,7 @@ class SaveManager {
     void ConvertFromUnversioned();
     void CreateDefaultGlobal();
 
-    void SaveFileThreaded(int fileNum, SaveContext* saveContext, int sectionID);
+    void SaveFileThreaded(int fileNum, const SaveContext& saveContext, int sectionID);
 
     void InitMeta(int slotNum);
     void StartupCheckAndInitMeta(int slotNum);
@@ -170,13 +174,13 @@ class SaveManager {
     static void InitFileMaxed();
 
     static void LoadRandomizer();
-    static void SaveRandomizer(SaveContext* saveContext, int sectionID, bool fullSave);
+    static void SaveRandomizer(const SaveContext& saveContext, int sectionID, bool fullSave);
 
     static void LoadBaseVersion1();
     static void LoadBaseVersion2();
     static void LoadBaseVersion3();
     static void LoadBaseVersion4();
-    static void SaveBase(SaveContext* saveContext, int sectionID, bool fullSave);
+    static void SaveBase(const SaveContext& saveContext, int sectionID, bool fullSave);
 
     std::vector<InitFunc> initFuncs;
 
@@ -198,21 +202,12 @@ class SaveManager {
 
 #else
 
-// TODO feature parity to the C++ interface. We need Save_AddInitFunction and Save_AddPostFunction at least
-
-typedef void (*Save_LoadFunc)(void);
-typedef void (*Save_SaveFunc)(const SaveContext* saveContext, int sectionID);
-
 void Save_Init(void);
 void Save_InitFile(int isDebug);
 void Save_SaveFile(void);
 void Save_SaveSection(int sectionID);
 void Save_SaveGlobal(void);
-void Save_LoadGlobal(void);
-void Save_AddLoadFunction(char* name, int version, Save_LoadFunc func);
-void Save_AddSaveFunction(char* name, int version, Save_SaveFunc func, bool saveWithBase, int parentSection);
 SaveFileMetaInfo* Save_GetSaveMetaInfo(int fileNum);
 void Save_CopyFile(int from, int to);
 void Save_DeleteFile(int fileNum);
-bool Save_Exist(int fileNum);
 #endif

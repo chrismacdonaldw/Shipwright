@@ -4,6 +4,10 @@
 #include "static_data.h"
 #include "rng.h"
 #include "soh/Enhancements/randomizer/trial.h"
+#ifdef DIPTYCH_GAME_MODULE
+#include "soh/DiptychModule_ForeignItems.h"
+std::string Diptych_StaticHintAbroadArea(RandomizerHint hint, size_t slot);
+#endif
 
 namespace Rando {
 Hint::Hint() {
@@ -514,12 +518,20 @@ const HintText Hint::GetItemHintText(uint8_t slot, bool mysterious) const {
     auto ctx = Rando::Context::GetInstance();
     RandomizerCheck hintedCheck = locations[slot];
     RandomizerGet targetRG = ctx->GetItemLocation(hintedCheck)->GetPlacedRandomizerGet();
+    bool iceTrap = targetRG == RG_ICE_TRAP;
+#ifdef DIPTYCH_GAME_MODULE
+    iceTrap = iceTrap || (targetRG == RG_DIPTYCH_FOREIGN && Diptych_ForeignTrapDisguised(hintedCheck));
+#endif
     if (mysterious) {
         return StaticData::hintTextTable[RHT_MYSTERIOUS_ITEM];
-    } else if (targetRG == RG_ICE_TRAP) { // RANDOTODO store in item hint instead of item
+    } else if (iceTrap) { // RANDOTODO store in item hint instead of item
         // item hints read as sentences, so the fake name needs its article like a real item's hint has
         return HintText(CustomMessage(
             { ctx->overrides[hintedCheck].GetTrickArticle() + ctx->overrides[hintedCheck].GetTrickName() }));
+#ifdef DIPTYCH_GAME_MODULE
+    } else if (targetRG == RG_DIPTYCH_FOREIGN) {
+        return HintText(CustomMessage(Diptych_ForeignItemPhrase(hintedCheck, true)));
+#endif
     } else {
         return ctx->GetItemLocation(hintedCheck)->GetPlacedItem().GetHint();
     }
@@ -527,6 +539,13 @@ const HintText Hint::GetItemHintText(uint8_t slot, bool mysterious) const {
 
 const HintText Hint::GetAreaHintText(uint8_t slot) const {
     CustomMessage areaText;
+#ifdef DIPTYCH_GAME_MODULE
+    if (areas[slot] == RA_NONE && slot < locations.size() && locations[slot] == RC_UNKNOWN_CHECK) {
+        if (const std::string abroad = Diptych_StaticHintAbroadArea(ownKey, slot); !abroad.empty()) {
+            return HintText(CustomMessage(abroad));
+        }
+    }
+#endif
     if (yourPocket && areas[slot] == RA_LINKS_POCKET) {
         return StaticData::hintTextTable[RHT_YOUR_POCKET];
     } else {

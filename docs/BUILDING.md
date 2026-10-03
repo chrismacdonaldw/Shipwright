@@ -44,6 +44,32 @@ cd Shipwright
 # Now you can run the executable in .\build\x64 or run in Visual Studio
 ```
 
+### Using provisioned Windows dependencies
+
+The default Windows configure installs and updates packages through vcpkg. To reuse a
+provisioned SDK without pulling vcpkg or installing packages, pass
+`-DSKIP_AUTOMATE_VCPKG=ON` and supply its toolchain before configuration:
+
+```sh
+cmake -S . -B build/standalone -G "Visual Studio 17 2022" -T v143 -A x64 \
+  -DCMAKE_TOOLCHAIN_FILE=C:/sdk/vcpkg/scripts/buildsystems/vcpkg.cmake \
+  -DVCPKG_TARGET_TRIPLET=x64-windows-static -DSKIP_AUTOMATE_VCPKG=ON \
+  -DDIPTYCH_ROOT= -DDIPTYCH_GAME_MODULE=OFF -DDIPTYCH_SHARED_ENGINE=OFF
+cmake --build build/standalone --config Release --target soh --parallel 2
+```
+
+Initialize the declared submodules first (`git submodule update --init`). Use a fresh
+build directory when changing the toolchain or static/shared runtime. The SDK must
+already contain the packages listed in the root CMake file; missing packages fail
+configuration. Record the vcpkg commit and installed package versions when sharing
+build evidence. CMake may still fetch native dependencies declared by libultraship
+and Torch. This option does not initialize submodules or make configuration offline.
+
+A standalone build uses the native checkout directly and needs no Diptych checkout.
+Leave `DIPTYCH_ROOT` empty; a nonempty root deliberately adds external integration
+sources even when the game-module option is OFF. The executable can be compiled
+without a user ROM. Running the game still requires supported extracted assets.
+
 ### Developing SoH
 With the cmake build system you have two options for working on the project:
 
@@ -339,6 +365,16 @@ cmake --build build-wiiu --target soh # --target soh_wuhb (for building .wuhb)
 
 # Compatible Roms
 See [`supportedHashes.json`](supportedHashes.json)
+
+## Maintained fork upstream updates
+
+`Upstream sync` runs daily at 05:23 UTC or through **Run workflow** once the setup is merged into `develop`. It merges official upstream `develop` into a new frozen `sync/upstream-<commit>` branch and opens a draft PR. It preserves fork commits and never merges the PR automatically. An open proposal queues newer upstream commits. Conflicts and changes under `.github/` stop publication for manual integration.
+
+`Native check` is dispatched at the proposal ref with its exact commit identity. A read-only Windows runner builds the standalone executable and runs `tests/SaveFileTest.cpp`, using declared submodules and a pinned vcpkg SDK with package/build caches. No game assets, private secrets, extraction or gameplay are involved. The initial `ci/upstream-sync` setup branch also runs this check on push. Inherited packaging workflows skip these branches.
+
+The sync job uses the built-in token with contents, PR and dispatch permissions; candidate validation only has read permission. Enable **Allow GitHub Actions to create and approve pull requests** while retaining the read-only default. If dispatch fails after PR creation, a later sync run retries only the missing validation for that unchanged merge; an existing failed check requires diagnosis and a manual re-run. Required checks should use the observed `native-windows` check, with zero account approvals for the sole owner; independent source review still precedes merging.
+
+Both workflows must land on `develop` before scheduled/manual sync is available. Repository protection and checks do not authorize a default-branch merge.
 
 ## Getting CI to work on your fork
 

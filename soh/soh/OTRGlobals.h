@@ -31,6 +31,8 @@ extern std::unordered_map<std::string, ExtensionEntry> ExtensionCache;
 
 const std::string appShortName = "soh";
 
+std::string HostedDataFolder(const std::string& folder);
+
 class Randomizer;
 class SaveStateMgr;
 

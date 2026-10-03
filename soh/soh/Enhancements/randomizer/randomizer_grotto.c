@@ -193,14 +193,7 @@ s16 Grotto_GetEntranceValueHandlingGrottoRando(s16 nextEntranceIndex) {
 
 // Translates and overrides the passed in entrance index if it corresponds to a
 // special grotto entrance (grotto load or return point) and updates player respawn data correctly.
-s16 Grotto_OverrideSpecialEntrance(s16 nextEntranceIndex) {
-    // Don't change anything unless grotto shuffle has been enabled
-    if (!Randomizer_GetSettingValue(RSK_SHUFFLE_GROTTO_ENTRANCES) &&
-        !Randomizer_GetSettingValue(RSK_SHUFFLE_OVERWORLD_SPAWNS) &&
-        !Randomizer_GetSettingValue(RSK_SHUFFLE_WARP_SONGS)) {
-        return nextEntranceIndex;
-    }
-
+static s16 Grotto_ResolveSpecialEntrance(s16 nextEntranceIndex, bool fromOtherGame) {
     // ENTR_RETURN_GROTTO means Link physically left a grotto. Any other way (warp song / owl / spawn)
     // arrives as a concrete grotto-exit index.
     bool grottoExit = nextEntranceIndex == ENTR_RETURN_GROTTO;
@@ -236,7 +229,10 @@ s16 Grotto_OverrideSpecialEntrance(s16 nextEntranceIndex) {
         // When the nextEntranceIndex is determined by a dynamic exit,
         // or set by Entrance_OverrideBlueWarp to mark a blue warp entrance,
         // we have to set the respawn information and nextEntranceIndex manually
-        if (gPlayState != NULL && gPlayState->nextEntranceIndex != ENTR_LOAD_OPENING) {
+        if (fromOtherGame) {
+            gSaveContext.respawnFlag = 2;
+            nextEntranceIndex = grotto.entranceIndex;
+        } else if (gPlayState != NULL && gPlayState->nextEntranceIndex != ENTR_LOAD_OPENING) {
             gSaveContext.respawnFlag = 2;
             nextEntranceIndex =
                 normalGrottoExit ? gSaveContext.respawn[RESPAWN_MODE_RETURN].entranceIndex : grotto.entranceIndex;
@@ -272,6 +268,25 @@ s16 Grotto_OverrideSpecialEntrance(s16 nextEntranceIndex) {
     overridingNextEntrance = true;
     return nextEntranceIndex;
 }
+
+s16 Grotto_OverrideSpecialEntrance(s16 nextEntranceIndex) {
+    if (!Randomizer_GetSettingValue(RSK_SHUFFLE_GROTTO_ENTRANCES) &&
+        !Randomizer_GetSettingValue(RSK_SHUFFLE_OVERWORLD_SPAWNS) &&
+        !Randomizer_GetSettingValue(RSK_SHUFFLE_WARP_SONGS)) {
+        return nextEntranceIndex;
+    }
+    return Grotto_ResolveSpecialEntrance(nextEntranceIndex, false);
+}
+
+#ifdef DIPTYCH_GAME_MODULE
+s16 Grotto_SetupCrossEntrance(s16 entranceIndex) {
+    if (entranceIndex >= ENTRANCE_GROTTO_LOAD_START && entranceIndex < ENTRANCE_GROTTO_LOAD_START + NUM_GROTTOS) {
+        Grotto_ResolveSpecialEntrance(entranceIndex + ENTRANCE_GROTTO_EXIT_START - ENTRANCE_GROTTO_LOAD_START, true);
+        gSaveContext.respawnFlag = 0;
+    }
+    return Grotto_ResolveSpecialEntrance(entranceIndex, true);
+}
+#endif
 
 // Override the entrance index when entering into a grotto actor
 // thisx - pointer to the grotto actor

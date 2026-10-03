@@ -10,6 +10,10 @@
 #include <soh/OTRAudio.h>
 #include "savestate_serialize.h"
 
+#ifdef DIPTYCH_GAME_MODULE
+bool Diptych_SaveStatesRefused();
+#endif
+
 extern "C" {
 #include "z64.h"
 #include "z64save.h"
@@ -395,6 +399,11 @@ void SaveStateMgr::ProcessSaveStateRequests(void) {
 }
 
 SaveStateReturn SaveStateMgr::AddRequest(const SaveStateRequest request) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (Diptych_SaveStatesRefused()) {
+        return SaveStateReturn::FAIL_BAD_REQUEST;
+    }
+#endif
     if (gPlayState == nullptr) {
         SPDLOG_ERROR("[SOH] Can not save or load a state outside of \"GamePlay\"");
         Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetGameOverlay()->TextDrawNotification(

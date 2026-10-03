@@ -386,11 +386,11 @@ bool Extractor::ValidateRomSize() const {
 
 bool Extractor::ValidateRom(bool skipCrcTextBox) {
     if (!ValidateNotCompressed()) {
-        ShowCompressedErrorBox();
+        if (!skipCrcTextBox) ShowCompressedErrorBox();
         return false;
     }
     if (!ValidateRomSize()) {
-        ShowSizeErrorBox();
+        if (!skipCrcTextBox) ShowSizeErrorBox();
         return false;
     }
     if (!ValidateAndFixRom()) {
@@ -473,8 +473,7 @@ bool Extractor::RunFileStandalone(std::string rom) {
     std::ifstream inFile;
 
     inFile.open(rom, std::ios::in | std::ios::binary);
-    inFile.read((char*)mRomData.get(), mCurRomSize);
-    inFile.clear();
+    if (!inFile.read((char*)mRomData.get(), mCurRomSize)) return false;
     inFile.close();
     BitConverter::RomToBigEndian(mRomData.get(), mCurRomSize);
 

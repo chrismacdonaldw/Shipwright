@@ -3,6 +3,7 @@
 #include "../location_access.h"
 #include "../entrance.h"
 
+#include <functional>
 #include <vector>
 
 // RANDOTODO merge into Logic once Logic is a class passed to logic funtions
@@ -13,6 +14,7 @@ struct GetAccessibleLocationsStruct {
     int gsCount;
     int maxGsCount;
     std::vector<LogicVal> buyIgnores;
+    std::vector<RandomizerCheck> lateLocations;
 
     // Variables for search
     std::vector<Rando::ItemLocation*> newItemLocations;
@@ -68,10 +70,20 @@ std::vector<RandomizerCheck> ReachabilitySearch(const std::vector<RandomizerChec
                                                 RandomizerRegion startingRegion = RR_ROOT,
                                                 RandoAgeTime startingAgeTime = RAT_NONE);
 
-void GeneratePlaythrough();
+std::vector<RandomizerCheck> GeneratePlaythrough();
 
 bool CheckBeatable(RandomizerGet ignore = RG_NONE);
 
 void ValidateEntrances(bool checkOtherEntranceAccess);
 
 void ValidateEntrances(bool checkPoeCollectorAccess, bool checkOtherEntranceAccess);
+
+extern bool (*gDiptychLocationReached)(RandomizerCheck loc);
+
+struct DiptychWorldLocalSteps {
+    std::function<void()> afterRegionTableInit;
+    std::function<void()> afterLocationPool;
+    bool corePocket = false;
+};
+
+int Diptych_FillWorldLocal(const DiptychWorldLocalSteps& steps);

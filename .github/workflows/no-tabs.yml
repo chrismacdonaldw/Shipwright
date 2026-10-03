@@ -1,5 +1,7 @@
 name: no-tabs
 on: [pull_request]
+permissions:
+  contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -9,5 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Check for tabs in C/C++ sources
         run: ./scripts/check-no-tabs.sh

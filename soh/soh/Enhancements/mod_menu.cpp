@@ -219,7 +219,7 @@ void UpdateModFiles(bool init = false, bool reset = false) {
     unsupportedFiles.clear();
     filePaths.clear();
     bool changed = false;
-    std::string modsPath = Ship::Context::LocateFileAcrossAppDirs("mods", appShortName);
+    std::string modsPath = Ship::Context::LocateFileAcrossAppDirs(HostedDataFolder("mods"), appShortName);
     std::map<std::string, std::string> tempMods;
     std::vector<std::filesystem::path> ootrsFiles;
     if (modsPath.length() > 0 && std::filesystem::exists(modsPath)) {

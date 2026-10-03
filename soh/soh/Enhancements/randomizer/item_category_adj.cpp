@@ -3,9 +3,17 @@
 #include "variables.h"
 #include "macros.h"
 #include "functions.h"
+#ifdef DIPTYCH_GAME_MODULE
+#include "soh/DiptychModule_ForeignItems.h"
+#endif
 
 GetItemCategory Randomizer_AdjustItemCategory(GetItemEntry item) {
     GetItemCategory category = item.getItemCategory;
+#ifdef DIPTYCH_GAME_MODULE
+    if (item.modIndex == MOD_RANDOMIZER && item.getItemId == RG_DIPTYCH_FOREIGN) {
+        return Diptych_ForeignItemCategory(item.diptychCheck, category);
+    }
+#endif
 
     // Downgrade bombchus to lesser if the player already has bombchus
     if (INV_CONTENT(ITEM_BOMBCHU) == ITEM_BOMBCHU &&

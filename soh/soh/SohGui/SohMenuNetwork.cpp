@@ -14,6 +14,15 @@ namespace SohGui {
 extern std::shared_ptr<SohMenu> mSohMenu;
 using namespace UIWidgets;
 
+#ifdef DIPTYCH_GAME_MODULE
+static void DiptychDisableNetworkEnable(WidgetInfo& info, bool running) {
+    if (!running) {
+        info.options->disabled = true;
+        info.options->disabledTooltip = "This setting is disabled because: \n\n- Not supported in Diptych";
+    }
+}
+#endif
+
 void SohMenu::AddMenuNetwork() {
     // Add Network Menu
     AddMenuEntry("Network", CVAR_SETTING("Menu.NetworkSidebarSection"));
@@ -43,7 +52,11 @@ void SohMenu::AddMenuNetwork() {
         })
         .Options(ButtonOptions().Tooltip("https://github.com/HarbourMasters/sail"));
     AddWidget(path, "Host & Port", WIDGET_CUSTOM).CustomFunction([](WidgetInfo& info) {
+#ifdef DIPTYCH_GAME_MODULE
+        ImGui::BeginDisabled(true);
+#else
         ImGui::BeginDisabled(Sail::Instance->isEnabled || CVarGetInteger(CVAR_SETTING("DisableChanges"), 0));
+#endif
         ImGui::Text("%s", info.name.c_str());
         CVarInputString("##HostSail", CVAR_REMOTE_SAIL("Host"),
                         InputOptions()
@@ -69,6 +82,9 @@ void SohMenu::AddMenuNetwork() {
             std::string host = CVarGetString(CVAR_REMOTE_SAIL("Host"), "127.0.0.1");
             uint16_t port = CVarGetInteger(CVAR_REMOTE_SAIL("Port"), 43384);
             info.options->disabled = !(!SohUtils::IsStringEmpty(host) && port > 1024 && port < 65535);
+#ifdef DIPTYCH_GAME_MODULE
+            DiptychDisableNetworkEnable(info, Sail::Instance->isEnabled);
+#endif
             if (Sail::Instance->isEnabled) {
                 info.name = "Disable##Sail";
             } else {
@@ -109,7 +125,11 @@ void SohMenu::AddMenuNetwork() {
 
     AddWidget(path, "Connect to Crowd Control", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Host & Port", WIDGET_CUSTOM).CustomFunction([](WidgetInfo& info) {
+#ifdef DIPTYCH_GAME_MODULE
+        ImGui::BeginDisabled(true);
+#else
         ImGui::BeginDisabled(CrowdControl::Instance->isEnabled || CVarGetInteger(CVAR_SETTING("DisableChanges"), 0));
+#endif
         ImGui::Text("%s", info.name.c_str());
         CVarInputString("##HostCrowdControl", CVAR_REMOTE_CROWD_CONTROL("Host"),
                         InputOptions()
@@ -135,6 +155,9 @@ void SohMenu::AddMenuNetwork() {
             std::string host = CVarGetString(CVAR_REMOTE_CROWD_CONTROL("Host"), "127.0.0.1");
             uint16_t port = CVarGetInteger(CVAR_REMOTE_CROWD_CONTROL("Port"), 43384);
             info.options->disabled = !(!SohUtils::IsStringEmpty(host) && port > 1024 && port < 65535);
+#ifdef DIPTYCH_GAME_MODULE
+            DiptychDisableNetworkEnable(info, CrowdControl::Instance->isEnabled);
+#endif
             if (CrowdControl::Instance->isEnabled) {
                 info.name = "Disable##CrowdControl";
             } else {

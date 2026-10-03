@@ -36,7 +36,11 @@ void Anchor::SendPacket_UpdateRoomState() {
     payload["type"] = UPDATE_ROOM_STATE;
     payload["state"] = PrepRoomState();
 
+#ifdef DIPTYCH_GAME_MODULE
+    SendJsonToRemote(payload);
+#else
     Network::SendJsonToRemote(payload);
+#endif
 }
 
 void Anchor::HandlePacket_UpdateRoomState(nlohmann::json payload) {
@@ -49,4 +53,7 @@ void Anchor::HandlePacket_UpdateRoomState(nlohmann::json payload) {
     roomState.showLocationsMode = payload["state"]["showLocationsMode"].get<u8>();
     roomState.teleportMode = payload["state"]["teleportMode"].get<u8>();
     roomState.syncItemsAndFlags = payload["state"]["syncItemsAndFlags"].get<u8>();
+#ifdef DIPTYCH_GAME_MODULE
+    PublishSnapshot();
+#endif
 }

@@ -159,6 +159,8 @@ class EntranceShuffler {
     int mCurNumRandomizedEntrances = 0;
     bool mEntranceShuffleFailure = false;
 };
+
+std::set<int16_t>& Diptych_KeptEntrances();
 } // namespace Rando
 
 extern "C" {

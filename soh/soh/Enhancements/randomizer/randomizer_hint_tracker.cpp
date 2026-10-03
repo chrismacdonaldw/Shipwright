@@ -135,7 +135,7 @@ void InitHintTrackerData(bool isDebug) {
     hintTextCache.clear();
 }
 
-void SaveHintTrackerData(SaveContext* saveContext, int sectionID, bool fullSave) {
+void SaveHintTrackerData(const SaveContext& saveContext, int sectionID, bool fullSave) {
     std::vector<RandomizerHint> hints;
     {
         std::lock_guard<std::mutex> lock(readHintsMutex);
@@ -171,6 +171,13 @@ void LoadHintTrackerData() {
     std::lock_guard<std::mutex> lock(readHintsMutex);
     readHints = std::move(loaded);
 }
+
+#ifdef DIPTYCH_GAME_MODULE
+std::vector<RandomizerHint> ReadHints() {
+    std::lock_guard<std::mutex> lock(readHintsMutex);
+    return { readHints.begin(), readHints.end() };
+}
+#endif
 
 // Decodes the current save's player name, for substituting the '@' player
 // name marker that the in-game textbox resolves at draw time.

@@ -11,6 +11,9 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#ifdef DIPTYCH_GAME_MODULE
+#include "soh/DiptychGoals.h"
+#endif
 
 #include <string.h>
 
@@ -1705,8 +1708,16 @@ void func_8090120C(BossGanon2* this, PlayState* play) {
             temp_a0_2 = Math_Atan2S(temp_f12, temp_f14) - player->actor.shape.rot.y;
             if ((ABS(temp_a0_2) < 0x2000) && (sqrtf(SQ(temp_f14) + SQ(temp_f12)) < 70.0f) &&
                 (player->meleeWeaponState != 0) && (player->heldItemAction == PLAYER_IA_SWORD_MASTER)) {
+#ifdef DIPTYCH_GAME_MODULE
+                if (!Diptych_GanonDefeated()) {
+                    break;
+                }
+#endif
                 func_80064520(play, &play->csCtx);
                 GameInteractor_ExecuteOnBossDefeat(&this->actor);
+#ifdef DIPTYCH_GAME_MODULE
+                Diptych_GoalCreditsReady();
+#endif
                 if (GameInteractor_Should(VB_SLAY_GANON, true)) {
                     this->subCamId = Play_CreateSubCamera(play);
                     Play_ChangeCameraStatus(play, CAM_ID_MAIN, CAM_STAT_WAIT);

@@ -379,6 +379,10 @@ void DrawSeedHashSprites(FileChooseContext* this) {
 u8 generating;
 int retries = 0;
 bool fileSelectSpoilerFileLoaded = false;
+#ifdef DIPTYCH_GAME_MODULE
+int Diptych_RandoBusy(void);
+void Diptych_SpoilerReplaced(void);
+#endif
 
 void FileChoose_UpdateRandomizer() {
     if (Randomizer_IsGenerating() && generating == 0) {
@@ -405,9 +409,13 @@ void FileChoose_UpdateRandomizer() {
         Randomizer_SetSpoilerLoaded(false);
     }
 
-    if (CVarGetInteger(CVAR_GENERAL("RandomizerNewFileDropped"), 0) != 0 ||
-        !(Randomizer_IsSeedGenerated() || Randomizer_IsSpoilerLoaded()) &&
-            SpoilerFileExists(CVarGetString(CVAR_GENERAL("SpoilerLog"), "")) && !fileSelectSpoilerFileLoaded) {
+    if (
+#ifdef DIPTYCH_GAME_MODULE
+        !Diptych_RandoBusy() &&
+#endif
+        (CVarGetInteger(CVAR_GENERAL("RandomizerNewFileDropped"), 0) != 0 ||
+         !(Randomizer_IsSeedGenerated() || Randomizer_IsSpoilerLoaded()) &&
+             SpoilerFileExists(CVarGetString(CVAR_GENERAL("SpoilerLog"), "")) && !fileSelectSpoilerFileLoaded)) {
         if (CVarGetInteger(CVAR_GENERAL("RandomizerNewFileDropped"), 0) != 0) {
             if (SpoilerFileExists(CVarGetString(CVAR_GENERAL("RandomizerDroppedFile"), ""))) {
                 CVarSetString(CVAR_GENERAL("SpoilerLog"), CVarGetString(CVAR_GENERAL("RandomizerDroppedFile"), ""));
@@ -420,6 +428,9 @@ void FileChoose_UpdateRandomizer() {
         CVarSetInteger(CVAR_GENERAL("RandomizerNewFileDropped"), 0);
         CVarSetString(CVAR_GENERAL("RandomizerDroppedFile"), "");
         if (!Ship_IsCStringEmpty(fileLoc)) {
+#ifdef DIPTYCH_GAME_MODULE
+            Diptych_SpoilerReplaced();
+#endif
             Randomizer_ParseSpoiler(fileLoc);
             fileSelectSpoilerFileLoaded = true;
         }

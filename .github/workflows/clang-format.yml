@@ -1,5 +1,7 @@
 name: clang-format
 on: [pull_request]
+permissions:
+  contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -10,12 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - name: Install clang-format
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-format-14
-      - name: Run clang-format
+      - name: Check changed native lines
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          ./run-clang-format.sh
-          git diff --exit-code
+          python3 -m unittest discover -s .github/scripts -p test_check_format.py
+          python3 .github/scripts/check_format.py

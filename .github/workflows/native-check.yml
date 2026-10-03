@@ -1,0 +1,98 @@
+name: Native check
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact candidate commit to validate
+        required: true
+        type: string
+  push:
+    branches: [ci/upstream-sync]
+permissions:
+  contents: read
+concurrency:
+  group: native-check-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  native-windows:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      VCPKG_PIN: 4a1c77189c64dae7afd478333a64d1e604d5dc91
+    steps:
+      - name: Validate dispatched identity
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid event commit' }
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and $env:EXPECTED_SHA -cne $env:GITHUB_SHA) {
+            throw 'Dispatch must target the exact expected candidate commit'
+          }
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          submodules: recursive
+          persist-credentials: false
+      - name: Verify checked-out commit
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -cne $env:GITHUB_SHA) { throw 'Checked-out commit differs' }
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read checked-out commit' }
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+      - name: Set dependency SDK path
+        shell: pwsh
+        run: |
+          ('VCPKG_ROOT=' + (Join-Path $env:RUNNER_TEMP 'native-vcpkg')) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Restore dependency packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ${{ runner.temp }}/native-vcpkg/installed
+            ${{ runner.temp }}/native-vcpkg/downloads
+          key: native-vcpkg-${{ runner.os }}-4a1c771-x64-static-${{ hashFiles('CMakeLists.txt', 'CMake/**') }}
+          restore-keys: native-vcpkg-${{ runner.os }}-4a1c771-x64-static-
+      - name: Provision pinned dependency SDK
+        shell: pwsh
+        run: |
+          git init $env:VCPKG_ROOT
+          if ($LASTEXITCODE -ne 0) { throw 'SDK repository initialization failed' }
+          git -C $env:VCPKG_ROOT remote add origin https://github.com/microsoft/vcpkg.git
+          if ($LASTEXITCODE -ne 0) { throw 'SDK remote setup failed' }
+          git -C $env:VCPKG_ROOT fetch --depth 1 origin $env:VCPKG_PIN
+          if ($LASTEXITCODE -ne 0) { throw 'SDK fetch failed' }
+          git -C $env:VCPKG_ROOT checkout --detach $env:VCPKG_PIN
+          if ($LASTEXITCODE -ne 0 -or (git -C $env:VCPKG_ROOT rev-parse HEAD) -cne $env:VCPKG_PIN) { throw 'SDK pin differs' }
+          & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'SDK bootstrap failed' }
+          & "$env:VCPKG_ROOT/vcpkg.exe" install --triplet x64-windows-static zlib bzip2 libzip libpng sdl2 sdl2-net glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis opus opusfile
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+      - name: Restore native build intermediates
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            build/native-check
+            x64
+          key: native-build-${{ runner.os }}-soh-4a1c771-${{ hashFiles('CMakeLists.txt', 'soh/CMakeLists.txt', '.gitmodules', '.github/workflows/native-check.yml') }}-${{ github.sha }}
+          restore-keys: native-build-${{ runner.os }}-soh-4a1c771-${{ hashFiles('CMakeLists.txt', 'soh/CMakeLists.txt', '.gitmodules', '.github/workflows/native-check.yml') }}-
+      - name: Configure standalone native executable
+        shell: pwsh
+        run: |
+          cmake -S . -B build/native-check -G "Visual Studio 17 2022" -T v143 -A x64 -DSKIP_AUTOMATE_VCPKG=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DDIPTYCH_ROOT= -DDIPTYCH_GAME_MODULE=OFF -DDIPTYCH_SHARED_ENGINE=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'Native configure failed' }
+      - name: Build standalone executable
+        shell: pwsh
+        run: |
+          cmake --build build/native-check --config Release --target soh --parallel 2 -- /p:CL_MPCount=2
+          if ($LASTEXITCODE -ne 0) { throw 'Native build failed' }
+          if (-not (Test-Path x64/Release/soh.exe)) { throw 'Native executable missing' }
+      - name: Run native save publication regression
+        shell: pwsh
+        run: |
+          $testExe = Join-Path $env:RUNNER_TEMP 'SaveFileTest.exe'
+          $testRoot = Join-Path $env:RUNNER_TEMP ('save-publication-' + [guid]::NewGuid().ToString('N'))
+          cl /nologo /std:c++17 /EHsc /W4 /WX tests/SaveFileTest.cpp "/Fe:$testExe" "/Fo:$env:RUNNER_TEMP/SaveFileTest.obj"
+          if ($LASTEXITCODE -ne 0) { throw 'Save regression compile failed' }
+          & $testExe $testRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Save regression failed' }

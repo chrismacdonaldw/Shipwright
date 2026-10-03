@@ -226,7 +226,12 @@ set(ALL_FILES
 ################################################################################
 # Target
 ################################################################################
-add_executable(${PROJECT_NAME} ${ALL_FILES})
+if(DIPTYCH_GAME_MODULE)
+    add_library(${PROJECT_NAME} SHARED ${ALL_FILES})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE DIPTYCH_GAME_MODULE)
+else()
+    add_executable(${PROJECT_NAME} ${ALL_FILES})
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
@@ -283,7 +288,17 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             $<$<NOT:$<OR:$<CONFIG:Debug>,$<CONFIG:Release>>>:${MSVC_RUNTIME_LIBRARY_DEFAULT}>
         )
     endif()
+    if(DIPTYCH_SHARED_ENGINE)
+        set(MSVC_RUNTIME_LIBRARY_STR "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+    endif()
     set_target_properties(${PROJECT_NAME} PROPERTIES MSVC_RUNTIME_LIBRARY ${MSVC_RUNTIME_LIBRARY_STR})
+endif()
+
+if(DIPTYCH_SHARED_ENGINE)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:libultraship> $<TARGET_FILE:ImGui>
+                $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
 endif()
 ################################################################################
 # Find/download Dr Libs (For custom audio)
@@ -772,6 +787,10 @@ if(CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch|CafeOS")
     target_link_libraries(${PROJECT_NAME} PRIVATE "${ADDITIONAL_LIBRARY_DEPENDENCIES}" $<TARGET_OBJECTS:pathconf> )
 else()
     target_link_libraries(${PROJECT_NAME} PRIVATE "${ADDITIONAL_LIBRARY_DEPENDENCIES}")
+endif()
+
+if(DIPTYCH_ROOT)
+    include("${DIPTYCH_ROOT}/src/soh/sources.cmake")
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch")

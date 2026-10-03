@@ -66,6 +66,9 @@ extern "C" {
 #include "src/overlays/actors/ovl_En_Heishi2/z_en_heishi2.h"
 #include "src/overlays/actors/ovl_En_GirlA/z_en_girla.h"
 #include "draw.h"
+#ifdef DIPTYCH_GAME_MODULE
+#include "soh/DiptychGoals.h"
+#endif
 
 static ObjectExtension::Register<DnsItemEntry> RegisterDnsItemEntryOverride;
 static ObjectExtension::Register<ScrubIdentity> RegisterScrubIdentity;
@@ -214,6 +217,11 @@ bool MeetsWinconRequirements() {
         case RO_WINCON_TOKENS:
             return gSaveContext.inventory.gsTokens >= RAND_GET_OPTION(RSK_WINCON_TOKEN_COUNT).Get();
         case RO_WINCON_TRIFORCE_PIECES:
+#ifdef DIPTYCH_GAME_MODULE
+            if (!Diptych_TriforceWincon()) {
+                return false;
+            }
+#endif
             return gSaveContext.ship.quest.data.randomizer.triforcePiecesCollected >=
                    RAND_GET_OPTION(RSK_WINCON_TRIFORCE_COUNT).Get();
         default:
@@ -265,6 +273,15 @@ bool MeetsRainbowBridgeRequirements() {
 static std::queue<RandomizerCheck> randomizerQueuedChecks;
 static RandomizerCheck randomizerQueuedCheck = RC_UNKNOWN_CHECK;
 static GetItemEntry randomizerQueuedItemEntry = GET_ITEM_NONE;
+
+#ifdef DIPTYCH_GAME_MODULE
+// OnItemReceive matches queued checks by item only; hold inbox delivery while a check is queued.
+RandomizerCheck Randomizer_GetQueuedCheck() {
+    return randomizerQueuedCheck;
+}
+// 0: SoH gives it; 1: keep it queued; 2: the inbox gives it
+int Diptych_ClaimCheck(RandomizerCheck rc);
+#endif
 
 void CheckTriggers() {
     if (!(gSaveContext.inventory.dungeonItems[SCENE_GANONS_TOWER] & 1) && MeetsGBKRequirements()) {
@@ -416,6 +433,15 @@ void RandomizerOnPlayerUpdateForRCQueueHandler() {
 
     RandomizerCheck rc = randomizerQueuedChecks.front();
     auto loc = Rando::Context::GetInstance()->GetItemLocation(rc);
+#ifdef DIPTYCH_GAME_MODULE
+    const int diptychClaim = loc->HasObtained() ? 0 : Diptych_ClaimCheck(rc);
+    if (diptychClaim != 0) {
+        if (diptychClaim == 2) {
+            randomizerQueuedChecks.pop();
+        }
+        return;
+    }
+#endif
     RandomizerGet vanillaRandomizerGet = Rando::StaticData::GetLocation(rc)->GetVanillaItem();
     GetItemID vanillaItem = (GetItemID)Rando::StaticData::RetrieveItem(vanillaRandomizerGet).GetItemID();
     GetItemEntry getItemEntry =

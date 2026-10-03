@@ -278,6 +278,34 @@ class Option {
     void SetCallback(WidgetFunc callback);
     void RunCallback();
 
+#ifdef DIPTYCH_GAME_MODULE
+    WidgetType DiptychWidgetType() const {
+        return widgetType;
+    }
+    bool DiptychIsDisabled() const {
+        return disabled;
+    }
+    const std::string& DiptychDisabledText() const {
+        return disabledText;
+    }
+    int DiptychImFlags() const {
+        return imFlags;
+    }
+    bool DiptychDefaultHidden() const {
+        return defaultHidden;
+    }
+    // ChangeOptions shortens the live list; spoiler loading uses the original value names.
+    std::vector<std::string> DiptychBuiltOptions() const {
+        std::vector<std::string> names(optionsTextToVar.size());
+        for (const auto& [text, index] : optionsTextToVar) {
+            if (index < names.size()) {
+                names[index] = text;
+            }
+        }
+        return names;
+    }
+#endif
+
   protected:
     Option(size_t key_, std::vector<std::string> options_, OptionCategory category_, std::string cvarName_,
            WidgetType widgetType_, uint8_t defaultOption_, bool defaultHidden_, WidgetFunc callback_, int imFlags_);

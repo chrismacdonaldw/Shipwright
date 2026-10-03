@@ -20,6 +20,10 @@ extern "C" {
 #include "functions.h"
 }
 
+#ifdef DIPTYCH_GAME_MODULE
+bool Diptych_IsLinkEntrance(int16_t index);
+#endif
+
 namespace Rando {
 EntranceLinkInfo NO_RETURN_ENTRANCE = { EntranceType::None, RR_NONE, RR_NONE, -1 };
 
@@ -263,6 +267,11 @@ std::string EntranceNameByRegions(RandomizerRegion parentRegion, RandomizerRegio
 }
 
 std::unordered_map<int16_t, Entrance*> entranceMap;
+
+std::set<int16_t>& Diptych_KeptEntrances() {
+    static std::set<int16_t> kept;
+    return kept;
+}
 
 void SetAllEntrancesData() {
     std::vector<EntranceInfoPair> entranceShuffleTable = {
@@ -1212,6 +1221,19 @@ int EntranceShuffler::ShuffleAllEntrances() {
 
     mEntranceShuffleFailure = false;
     SetAllEntrancesData();
+    const std::set<int16_t>& diptychKept = Diptych_KeptEntrances();
+    for (auto& [index, entrance] : entranceMap) {
+        bool kept = diptychKept.count(index) > 0;
+#ifdef DIPTYCH_GAME_MODULE
+        if (Diptych_IsLinkEntrance(index)) {
+            SPDLOG_INFO("Diptych: entrance {} is a game link door; not shuffled", index);
+            kept = true;
+        }
+#endif
+        if (kept) {
+            entrance->SetType(EntranceType::None);
+        }
+    }
 
     EntrancePools oneWayEntrancePools = {};
     EntrancePools entrancePools = {};

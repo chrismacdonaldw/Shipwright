@@ -10,6 +10,10 @@
  */
 
 void Anchor::SendPacket_Handshake() {
+#ifdef DIPTYCH_GAME_MODULE
+    PublishSnapshot();
+    Network::SendJsonToRemote(diptychTransport.Read().handshake);
+#else
     nlohmann::json payload;
     payload["type"] = HANDSHAKE;
     payload["roomId"] = CVarGetString(CVAR_REMOTE_ANCHOR("RoomId"), "");
@@ -17,4 +21,5 @@ void Anchor::SendPacket_Handshake() {
     payload["clientState"] = PrepClientState();
 
     SendJsonToRemote(payload);
+#endif
 }

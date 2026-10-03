@@ -280,7 +280,7 @@ void LoadPresets() {
 
 void SavePreset(std::string& presetName) {
     if (!fs::exists(presetFolder)) {
-        fs::create_directory(presetFolder);
+        fs::create_directories(presetFolder);
     }
     presets[presetName].presetValues["presetName"] = presetName;
     presets[presetName].presetValues["fileType"] = FILE_TYPE_PRESET;
@@ -520,7 +520,7 @@ void RegisterPresetsWidgets() {
     SohGui::mSohMenu->AddWidget(path, "PresetsWidget", WIDGET_CUSTOM)
         .CustomFunction(PresetsCustomWidget)
         .HideInSearch(true);
-    presetFolder = Ship::Context::GetRawInstance()->GetPathRelativeToAppDirectory("presets");
+    presetFolder = Ship::Context::GetRawInstance()->GetPathRelativeToAppDirectory(HostedDataFolder("presets"));
     std::fill_n(saveSection, PRESET_SECTION_MAX, true);
     LoadPresets();
 }

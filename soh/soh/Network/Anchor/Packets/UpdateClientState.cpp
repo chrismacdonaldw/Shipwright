@@ -50,7 +50,12 @@ nlohmann::json Anchor::PrepClientState() {
 void Anchor::SendPacket_UpdateClientState() {
     nlohmann::json payload;
     payload["type"] = UPDATE_CLIENT_STATE;
+#ifdef DIPTYCH_GAME_MODULE
+    PublishSnapshot();
+    payload["state"] = diptychTransport.Read().handshake["clientState"];
+#else
     payload["state"] = PrepClientState();
+#endif
 
     SendJsonToRemote(payload);
 }

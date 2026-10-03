@@ -14,34 +14,64 @@ extern PlayState* gPlayState;
 // MARK: - Overrides
 
 void Anchor::Enable() {
-    Network::Enable(CVarGetString(CVAR_REMOTE_ANCHOR("Host"), "anchor.hm64.org"),
-                    CVarGetInteger(CVAR_REMOTE_ANCHOR("Port"), 43383));
+#ifdef DIPTYCH_GAME_MODULE
+    if (isEnabled) return;
+    Network::Disable();
     ownClientId = CVarGetInteger(CVAR_REMOTE_ANCHOR("LastClientId"), 0);
     roomState.ownerClientId = 0;
+    roomState.syncItemsAndFlags = PrepRoomState()["syncItemsAndFlags"].get<u8>();
+    PublishSnapshot();
+    InstallFrameHook();
+#endif
+    Network::Enable(CVarGetString(CVAR_REMOTE_ANCHOR("Host"), "anchor.hm64.org"),
+                    CVarGetInteger(CVAR_REMOTE_ANCHOR("Port"), 43383));
+#ifndef DIPTYCH_GAME_MODULE
+    ownClientId = CVarGetInteger(CVAR_REMOTE_ANCHOR("LastClientId"), 0);
+    roomState.ownerClientId = 0;
+#endif
 }
 
 void Anchor::Disable() {
     Network::Disable();
 
+#ifdef DIPTYCH_GAME_MODULE
+    diptychTransport.Disconnected();
+#endif
     clients.clear();
     RefreshClientActors();
 }
 
 void Anchor::OnConnected() {
+#ifdef DIPTYCH_GAME_MODULE
+    diptychTransport.Connected([this](const DiptychNet::Snapshot& snapshot) {
+        Network::SendJsonToRemote(snapshot.handshake);
+        if (snapshot.isSaveLoaded && snapshot.syncOn) {
+            Network::SendJsonToRemote({{"type", REQUEST_TEAM_STATE}, {"clientId", snapshot.handshake["clientId"]},
+                                      {"targetTeamId", snapshot.teamId}});
+        }
+    });
+#else
     SendPacket_Handshake();
     RegisterHooks();
 
     if (IsSaveLoaded()) {
         SendPacket_RequestTeamState();
     }
+#endif
 }
 
 void Anchor::OnDisconnected() {
+#ifdef DIPTYCH_GAME_MODULE
+    diptychTransport.Disconnected();
+#else
     RegisterHooks();
+#endif
 }
 
 void Anchor::ProcessOutgoingPackets() {
-    // Copy all queued packets while holding the lock, then send them after releasing
+#ifdef DIPTYCH_GAME_MODULE
+    diptychTransport.SendOutgoing([this](const nlohmann::json& packet) { Network::SendJsonToRemote(packet); });
+#else
     std::queue<nlohmann::json> packetsToSend;
     {
         std::lock_guard<std::mutex> lock(outgoingPacketQueueMutex);
@@ -58,9 +88,13 @@ void Anchor::ProcessOutgoingPackets() {
         }
         Network::SendJsonToRemote(payload);
     }
+#endif
 }
 
 void Anchor::SendJsonToRemote(nlohmann::json payload) {
+#ifdef DIPTYCH_GAME_MODULE
+    if (isEnabled && isConnected) diptychTransport.QueueSend(std::move(payload));
+#else
     if (!isConnected) {
         return;
     }
@@ -78,9 +112,14 @@ void Anchor::SendJsonToRemote(nlohmann::json payload) {
     // Queue the packet to be sent on the network thread
     std::lock_guard<std::mutex> lock(outgoingPacketQueueMutex);
     outgoingPacketQueue.push(payload);
+#endif
 }
 
 void Anchor::OnIncomingJson(nlohmann::json payload) {
+#ifdef DIPTYCH_GAME_MODULE
+    const bool disable = payload.is_object() && payload.contains("type") && payload["type"] == DISABLE_ANCHOR;
+    if (diptychTransport.Receive(std::move(payload)) && disable) isEnabled = false;
+#else
     // If it doesn't contain a type, it's not a valid payload
     if (!payload.contains("type")) {
         return;
@@ -106,15 +145,19 @@ void Anchor::OnIncomingJson(nlohmann::json payload) {
     // Queue all packets to be processed on the game thread
     std::lock_guard<std::mutex> lock(incomingPacketQueueMutex);
     incomingPacketQueue.push(payload);
+#endif
 }
 
 void Anchor::ProcessIncomingPacketQueue() {
-    // Copy all queued packets while holding the lock, then process them after releasing
     std::queue<nlohmann::json> packetsToProcess;
+#ifdef DIPTYCH_GAME_MODULE
+    for (auto& packet : diptychTransport.TakeStock()) packetsToProcess.push(std::move(packet));
+#else
     {
         std::lock_guard<std::mutex> lock(incomingPacketQueueMutex);
         packetsToProcess.swap(incomingPacketQueue);
     }
+#endif
 
     // Process packets without holding the lock
     while (!packetsToProcess.empty()) {
@@ -126,6 +169,21 @@ void Anchor::ProcessIncomingPacketQueue() {
         isProcessingIncomingPacket = true;
 
         try {
+#ifdef DIPTYCH_GAME_MODULE
+        if (DiptychNet::Transport::DiptychPacket(packetType)) {
+            SPDLOG_WARN("[Anchor] Dropped Diptych packet from stock queue");
+            isProcessingIncomingPacket = false;
+            continue;
+        }
+        if (packetType != ALL_CLIENT_STATE && packetType != UPDATE_CLIENT_STATE && packetType != PLAYER_UPDATE &&
+            payload.contains("clientId")) {
+            const auto id = payload["clientId"].get<uint32_t>();
+            if (clients.contains(id) && clients[id].clientVersion != clientVersion) {
+                isProcessingIncomingPacket = false;
+                continue;
+            }
+        }
+#endif
             // packetType here is a string so we can't use a switch statement
             if (packetType == ALL_CLIENT_STATE)
                 HandlePacket_AllClientState(payload);

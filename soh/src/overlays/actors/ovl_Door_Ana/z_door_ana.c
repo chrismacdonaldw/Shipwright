@@ -128,6 +128,10 @@ void DoorAna_WaitClosed(DoorAna* this, PlayState* play) {
 }
 
 // update routine for grottos that are open
+#ifdef DIPTYCH_GAME_MODULE
+int Diptych_KeepGrottoEntrance(Actor* actor);
+#endif
+
 void DoorAna_WaitOpen(DoorAna* this, PlayState* play) {
     Player* player;
     s32 destinationIdx;
@@ -147,7 +151,11 @@ void DoorAna_WaitOpen(DoorAna* this, PlayState* play) {
             play->nextEntranceIndex = sGrottoEntrances[destinationIdx];
 
             // In ER, load the correct entrance based on the grotto link is falling into
-            if (IS_RANDO && Randomizer_GetSettingValue(RSK_SHUFFLE_ENTRANCES)) {
+            if (
+#ifdef DIPTYCH_GAME_MODULE
+                !Diptych_KeepGrottoEntrance(&this->actor) &&
+#endif
+                IS_RANDO && Randomizer_GetSettingValue(RSK_SHUFFLE_ENTRANCES)) {
                 Grotto_OverrideActorEntrance(&this->actor);
             }
 

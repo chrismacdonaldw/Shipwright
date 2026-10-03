@@ -68,5 +68,8 @@ void Anchor::HandlePacket_AllClientState(nlohmann::json payload) {
         clients.erase(clientId);
     }
 
+#ifdef DIPTYCH_GAME_MODULE
+    PublishSnapshot();
+#endif
     shouldRefreshActors = true;
 }
