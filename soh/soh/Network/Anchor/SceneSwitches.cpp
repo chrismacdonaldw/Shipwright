@@ -3,6 +3,7 @@
 extern "C" {
 #include "variables.h"
 #include "z64scene.h"
+extern PlayState* gPlayState;
 }
 
 namespace AnchorSceneSwitches {
