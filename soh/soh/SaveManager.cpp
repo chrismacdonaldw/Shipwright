@@ -1,7 +1,7 @@
 #include "SaveManager.h"
+#include "SaveFile.h"
 #ifdef DIPTYCH_GAME_MODULE
 #include <atomic>
-#include "../../../host/native_save.h"
 static std::atomic<uint64_t> sDiptychBaseWrites[3]{};
 uint64_t SaveManager_BaseWriteSerial(int slot) {
     return slot >= 0 && slot < 3 ? sDiptychBaseWrites[slot].load() : 0;
@@ -35,6 +35,7 @@ extern "C" {
 #include <filesystem>
 #include <array>
 #include <mutex>
+#include <memory>
 
 extern "C" SaveContext gSaveContext;
 using namespace std::string_literals;
@@ -1288,105 +1289,96 @@ int copy_file(const char* src, const char* dst) {
 // Threaded SaveFile takes copy of gSaveContext for local unmodified storage
 
 void SaveManager::SaveFileThreaded(int fileNum, SaveContext* saveContext, int sectionID) {
-    saveMtx.lock();
-    if (refusedSlots[fileNum]) {
-        delete saveContext;
-        saveMtx.unlock();
-        SPDLOG_ERROR("Save {} refused: unsupported diptych section", GetFileName(fileNum).string());
-        return;
-    }
-    SPDLOG_INFO("Save File - fileNum: {}", fileNum);
-    // Needed for first time save, hasn't changed in forever anyway
-    saveBlock["version"] = 1;
-    if (IS_RANDO) {
-        saveBlock["fileType"] = FILE_TYPE_SAVE_RANDO;
-    } else {
-        saveBlock["fileType"] = FILE_TYPE_SAVE_VANILLA;
-    }
-    if (sectionID == SECTION_ID_BASE) {
-        for (auto& sectionHandlerPair : sectionSaveHandlers) {
-            auto& saveFuncInfo = sectionHandlerPair.second;
-            // Don't call SaveFuncs for sections that aren't tied to game save
-            if (!saveFuncInfo.saveWithBase || (saveFuncInfo.name == "randomizer" && !IS_RANDO)) {
-                continue;
-            }
-            nlohmann::json& sectionBlock = saveBlock["sections"][saveFuncInfo.name];
-            sectionBlock["version"] = sectionHandlerPair.second.version;
-            // If any save file is loaded for medatata, or a spoiler log is loaded (not sure which at this point), there
-            // is still data in the "randomizer" section This clears the randomizer data block if and only if the
-            // section being called is "randomizer" and the current save file is not a randomizer save file.
-
-            currentJsonContext = &sectionBlock["data"];
-            sectionHandlerPair.second.func(saveContext, sectionID, true);
-        }
-    } else {
-        SaveFuncInfo svi = sectionSaveHandlers.find(sectionID)->second;
-        auto& sectionName = svi.name;
-        auto sectionVersion = svi.version;
-        // If section has a parentSection, it is a subsection. Load parentSection version and set sectionBlock to parent
-        // string
-        if (svi.parentSection != -1 && svi.parentSection < sectionIndex) {
-            auto parentSvi = sectionSaveHandlers.find(svi.parentSection)->second;
-            sectionName = parentSvi.name;
-            sectionVersion = parentSvi.version;
-        }
-        nlohmann::json& sectionBlock = saveBlock["sections"][sectionName];
-        sectionBlock["version"] = sectionVersion;
-        currentJsonContext = &sectionBlock["data"];
-        svi.func(saveContext, sectionID, false);
-    }
-
-    std::filesystem::path fileName = GetFileName(fileNum);
-    std::filesystem::path tempFile = GetFileTempName(fileNum);
-
-#ifdef DIPTYCH_GAME_MODULE
-    bool published = false;
+    std::unique_ptr<SaveContext> snapshot(saveContext);
+    const std::lock_guard<std::mutex> lock(saveMtx);
     try {
-        published = native_save::Publish(fileName, saveBlock.dump(1) + "\n");
-    } catch (...) {}
-    if (!published) {
-        delete saveContext;
-        saveMtx.unlock();
-        SPDLOG_ERROR("Save File failed - fileNum: {}", fileNum);
-        return;
-    }
-    if (fileNum >= 0 && fileNum < 3 && sectionID == SECTION_ID_BASE) {
-        sDiptychBaseWrites[fileNum]++;
-    }
-#else
-    if (std::filesystem::exists(tempFile)) {
-        std::filesystem::remove(tempFile);
-    }
+        if (refusedSlots[fileNum]) {
+            SPDLOG_ERROR("Save {} refused: unsupported diptych section", GetFileName(fileNum).string());
+            return;
+        }
+        SPDLOG_INFO("Save File - fileNum: {}", fileNum);
+        // Needed for first time save, hasn't changed in forever anyway
+        saveBlock["version"] = 1;
+        if (IS_RANDO) {
+            saveBlock["fileType"] = FILE_TYPE_SAVE_RANDO;
+        } else {
+            saveBlock["fileType"] = FILE_TYPE_SAVE_VANILLA;
+        }
+        if (sectionID == SECTION_ID_BASE) {
+            for (auto& sectionHandlerPair : sectionSaveHandlers) {
+                auto& saveFuncInfo = sectionHandlerPair.second;
+                // Don't call SaveFuncs for sections that aren't tied to game save
+                if (!saveFuncInfo.saveWithBase || (saveFuncInfo.name == "randomizer" && !IS_RANDO)) {
+                    continue;
+                }
+                nlohmann::json& sectionBlock = saveBlock["sections"][saveFuncInfo.name];
+                sectionBlock["version"] = sectionHandlerPair.second.version;
+                // If any save file is loaded for medatata, or a spoiler log is loaded (not sure which at this point), there
+                // is still data in the "randomizer" section This clears the randomizer data block if and only if the
+                // section being called is "randomizer" and the current save file is not a randomizer save file.
 
+                currentJsonContext = &sectionBlock["data"];
+                sectionHandlerPair.second.func(saveContext, sectionID, true);
+            }
+        } else {
+            SaveFuncInfo svi = sectionSaveHandlers.find(sectionID)->second;
+            auto& sectionName = svi.name;
+            auto sectionVersion = svi.version;
+            // If section has a parentSection, it is a subsection. Load parentSection version and set sectionBlock to parent
+            // string
+            if (svi.parentSection != -1 && svi.parentSection < sectionIndex) {
+                auto parentSvi = sectionSaveHandlers.find(svi.parentSection)->second;
+                sectionName = parentSvi.name;
+                sectionVersion = parentSvi.version;
+            }
+            nlohmann::json& sectionBlock = saveBlock["sections"][sectionName];
+            sectionBlock["version"] = sectionVersion;
+            currentJsonContext = &sectionBlock["data"];
+            svi.func(saveContext, sectionID, false);
+        }
+
+        std::filesystem::path fileName = GetFileName(fileNum);
 #if defined(__SWITCH__) || defined(__WIIU__)
-    FILE* w = fopen(tempFile.c_str(), "w");
-    std::string json_string = saveBlock.dump(1);
-    fwrite(json_string.c_str(), sizeof(char), json_string.length(), w);
-    fclose(w);
+        // These platforms retain their existing copy/remove publication path.
+        const std::filesystem::path tempFile = GetFileTempName(fileNum);
+        if (std::filesystem::exists(tempFile)) {
+            std::filesystem::remove(tempFile);
+        }
+        std::string json_string = saveBlock.dump(1);
+        FILE* w = fopen(tempFile.c_str(), "w");
+        if (w == nullptr) {
+            SPDLOG_ERROR("Save File failed - fileNum: {}", fileNum);
+            return;
+        }
+        fwrite(json_string.c_str(), sizeof(char), json_string.length(), w);
+        fclose(w);
+        if (std::filesystem::exists(fileName)) {
+            std::filesystem::remove(fileName);
+        }
+        copy_file(tempFile.c_str(), fileName.c_str());
+        if (std::filesystem::exists(tempFile)) {
+            std::filesystem::remove(tempFile);
+        }
 #else
-    std::ofstream output(tempFile);
-    output << std::setw(1) << saveBlock << std::endl;
-    output.close();
+        if (!SohSaveFile::Publish(fileName, saveBlock.dump(1) + "\n")) {
+            SPDLOG_ERROR("Save File failed - fileNum: {}", fileNum);
+            return;
+        }
 #endif
-
-#if defined(__SWITCH__) || defined(__WIIU__)
-    if (std::filesystem::exists(fileName)) {
-        std::filesystem::remove(fileName);
+#ifdef DIPTYCH_GAME_MODULE
+        if (fileNum >= 0 && fileNum < 3 && sectionID == SECTION_ID_BASE) {
+            sDiptychBaseWrites[fileNum]++;
+        }
+#endif
+        snapshot.reset();
+        InitMeta(fileNum);
+        GameInteractor::Instance->ExecuteHooks<GameInteractor::OnSaveFile>(fileNum, sectionID);
+        SPDLOG_INFO("Save File Finish - fileNum: {}", fileNum);
+    } catch (const std::exception& error) {
+        SPDLOG_ERROR("Save File failed - fileNum: {}: {}", fileNum, error.what());
+    } catch (...) {
+        SPDLOG_ERROR("Save File failed - fileNum: {}: unknown exception", fileNum);
     }
-    copy_file(tempFile.c_str(), fileName.c_str());
-    if (std::filesystem::exists(tempFile)) {
-        std::filesystem::remove(tempFile);
-    }
-#else
-    std::filesystem::rename(tempFile, fileName);
-#endif
-
-#endif
-    delete saveContext;
-    InitMeta(fileNum);
-    GameInteractor::Instance->ExecuteHooks<GameInteractor::OnSaveFile>(fileNum, sectionID);
-    SPDLOG_INFO("Save File Finish - fileNum: {}", fileNum);
-    saveMtx.unlock();
 }
 
 // SaveSection creates a copy of gSaveContext to prevent mid-save data modification, and passes its reference to
