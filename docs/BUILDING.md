@@ -44,6 +44,32 @@ cd Shipwright
 # Now you can run the executable in .\build\x64 or run in Visual Studio
 ```
 
+### Using provisioned Windows dependencies
+
+The default Windows configure installs and updates packages through vcpkg. To reuse a
+provisioned SDK without pulling vcpkg or installing packages, pass
+`-DSKIP_AUTOMATE_VCPKG=ON` and supply its toolchain before configuration:
+
+```sh
+cmake -S . -B build/standalone -G "Visual Studio 17 2022" -T v143 -A x64 \
+  -DCMAKE_TOOLCHAIN_FILE=C:/sdk/vcpkg/scripts/buildsystems/vcpkg.cmake \
+  -DVCPKG_TARGET_TRIPLET=x64-windows-static -DSKIP_AUTOMATE_VCPKG=ON \
+  -DDIPTYCH_ROOT= -DDIPTYCH_GAME_MODULE=OFF -DDIPTYCH_SHARED_ENGINE=OFF
+cmake --build build/standalone --config Release --target soh --parallel 2
+```
+
+Initialize the declared submodules first (`git submodule update --init`). Use a fresh
+build directory when changing the toolchain or static/shared runtime. The SDK must
+already contain the packages listed in the root CMake file; missing packages fail
+configuration. Record the vcpkg commit and installed package versions when sharing
+build evidence. CMake may still fetch native dependencies declared by libultraship
+and Torch. This option does not initialize submodules or make configuration offline.
+
+A standalone build uses the native checkout directly and needs no Diptych checkout.
+Leave `DIPTYCH_ROOT` empty; a nonempty root deliberately adds external integration
+sources even when the game-module option is OFF. The executable can be compiled
+without a user ROM. Running the game still requires supported extracted assets.
+
 ### Developing SoH
 With the cmake build system you have two options for working on the project:
 
