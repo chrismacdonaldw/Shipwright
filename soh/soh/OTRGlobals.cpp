@@ -875,11 +875,7 @@ void OTRGlobals::Initialize() {
                                               CVarGetInteger(CVAR_SETTING("AutoCaptureMouse"), 1));
     context->GetWindow()->SetForceCursorVisibility(CVarGetInteger(CVAR_SETTING("CursorVisibility"), 0));
 
-    context->InitAudio({ .SampleRate = 32000,
-                         .SampleLength = 1024,
-                         // 4096 frames at 32 kHz (~128 ms) gives enough reservoir for frame
-                         // jitter and slow-frame spikes without perceptible audio latency.
-                         .DesiredBuffered = 4096 });
+    context->InitAudio({ .SampleRate = 32000, .SampleLength = 1024, .DesiredBuffered = 1680 });
 
     // The menu is set up before audio is initialized, so its list of available audio backends has to be
     // populated here rather than in Menu::InitElement (where the window backends are handled).
@@ -1179,6 +1175,7 @@ void OTRAudio_Thread() {
                 produce_next_batch();
                 audio.processing = false;
             }
+            audio.cv_from_thread.notify_all();
         }
 
         // Pre-buffer: fill the reservoir while the backend can accept more,
@@ -1751,6 +1748,7 @@ extern "C" void SaveManager_ThreadPoolWait() {
 
 extern "C" void DeinitOTR() {
     SaveManager_ThreadPoolWait();
+    WaitForRandoGeneration();
     OTRAudio_Exit();
     if (CVarGetInteger(CVAR_REMOTE_CROWD_CONTROL("Enabled"), 0)) {
         CrowdControl::Instance->Disable();
@@ -1988,6 +1986,13 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
 
     last_fps = fps;
     last_update_rate = R_UPDATE_RATE;
+
+    {
+        std::unique_lock<std::mutex> Lock(audio.mutex);
+        while (audio.processing) {
+            audio.cv_from_thread.wait(Lock);
+        }
+    }
 
     bool curAltAssets = CVarGetInteger(CVAR_SETTING("AltAssets"), 1);
     if (prevAltAssets != curAltAssets) {

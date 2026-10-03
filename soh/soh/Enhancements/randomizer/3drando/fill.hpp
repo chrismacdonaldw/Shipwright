@@ -14,6 +14,7 @@ struct GetAccessibleLocationsStruct {
     int gsCount;
     int maxGsCount;
     std::vector<LogicVal> buyIgnores;
+    std::vector<RandomizerCheck> lateLocations;
 
     // Variables for search
     std::vector<Rando::ItemLocation*> newItemLocations;
@@ -69,7 +70,7 @@ std::vector<RandomizerCheck> ReachabilitySearch(const std::vector<RandomizerChec
                                                 RandomizerRegion startingRegion = RR_ROOT,
                                                 RandoAgeTime startingAgeTime = RAT_NONE);
 
-void GeneratePlaythrough();
+std::vector<RandomizerCheck> GeneratePlaythrough();
 
 bool CheckBeatable(RandomizerGet ignore = RG_NONE);
 
