@@ -1,4 +1,3 @@
-#define NOGDI // avoid Windows definitions that conflict with z64.h
 #include <memory>
 #include <ship/Context.h>
 #include <fstream>
