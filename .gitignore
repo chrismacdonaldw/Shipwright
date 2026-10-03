@@ -461,3 +461,8 @@ soh/properties.h
 /clang-format
 /clang-format.exe
 *.o2r
+
+# Local assistant guidance, skill links and installed hook configuration.
+/AGENTS.md
+/.agents/
+/.codex/hooks.json
