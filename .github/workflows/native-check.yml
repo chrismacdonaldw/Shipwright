@@ -20,7 +20,6 @@ jobs:
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       VCPKG_PIN: 4a1c77189c64dae7afd478333a64d1e604d5dc91
-      VCPKG_ROOT: ${{ runner.temp }}/native-vcpkg
     steps:
       - name: Validate dispatched identity
         shell: pwsh
@@ -29,6 +28,10 @@ jobs:
           if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and $env:EXPECTED_SHA -cne $env:GITHUB_SHA) {
             throw 'Dispatch must target the exact expected candidate commit'
           }
+      - name: Set dependency SDK path
+        shell: pwsh
+        run: |
+          ('VCPKG_ROOT=' + (Join-Path $env:RUNNER_TEMP 'native-vcpkg')) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.sha }}
