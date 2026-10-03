@@ -37,12 +37,7 @@ def outstanding(pulls):
     return any(p["head"]["ref"].startswith(PREFIX) for p in pulls)
 
 
-def dispatch(repo, branch, candidate):
-    subprocess.run(["gh", "api", f"repos/{repo}/actions/workflows/native-check.yml/dispatches", "--method", "POST",
-                    "-f", "ref=" + branch, "-f", "inputs[expected_sha]=" + candidate], check=True)
-
-
-def resume_validation(repo, proposal):
+def validate_proposal(repo, proposal):
     head = proposal["head"]
     branch = head["ref"]
     if not re.fullmatch(re.escape(PREFIX) + r"[0-9a-f]{40}", branch) or head["repo"]["full_name"] != repo:
@@ -63,12 +58,7 @@ def resume_validation(repo, proposal):
     run("git", "fetch", "--no-tags", "origin", BASE)
     if run("git", "rev-parse", trusted + ":.github") != run("git", "rev-parse", candidate + ":.github"):
         raise ValueError("Proposal automation differs from the maintained default; manual review required")
-    runs = api(f"repos/{repo}/actions/workflows/native-check.yml/runs?head_sha={candidate}&per_page=1")
-    if runs["total_count"] == 0:
-        dispatch(repo, branch, candidate)
-        note("Dispatched missing validation for the unchanged open proposal.")
-    else:
-        note("Existing validation retained; failed checks require manual diagnosis/re-run.")
+    note("Frozen proposal retained. Its required PR validation and review must pass before merging; diagnostic dispatch does not satisfy required checks.")
 
 
 def note(message):
@@ -93,7 +83,7 @@ def main():
         proposals = [p for p in pulls if p["head"]["ref"].startswith(PREFIX)]
         if len(proposals) != 1:
             raise ValueError("Multiple sync proposals require manual review")
-        resume_validation(repo, proposals[0])
+        validate_proposal(repo, proposals[0])
         note("An upstream sync PR is already open. New commits wait until it is handled.")
         return
     base = sha(api(f"repos/{repo}/git/ref/heads/{BASE}")["object"]["sha"])
@@ -142,10 +132,9 @@ def main():
     run("git", "-c", "core.hooksPath=/dev/null", "push", "origin", "HEAD:refs/heads/" + branch, env=push_env)
     pr = api(f"repos/{repo}/pulls", "--method", "POST", "-f", "title=merge: sync upstream develop",
              "-f", "head=" + branch, "-f", "base=" + BASE, "-F", "draft=true",
-             "-f", "body=- Merge upstream develop while preserving fork changes.\n- Run the native Windows build and save-publication regression.")
-    # The dispatch ref determines github.sha and therefore the native check's SHA.
-    dispatch(repo, branch, candidate)
+             "-f", "body=- Merge upstream develop while preserving fork changes.\n- Validate the merged result with the native Windows build and save regression.")
     note("Frozen candidate " + candidate + ": " + pr["html_url"] + ". Review and merge remain manual.")
+    note("Review and approve the PR workflow run. Built-in-token proposals require workflow approval; diagnostic dispatch does not satisfy required checks.")
 
 
 if __name__ == "__main__":

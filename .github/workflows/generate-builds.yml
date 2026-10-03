@@ -11,7 +11,7 @@ concurrency:
 jobs:
 
   generate-soh-otr:
-    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' }}
+    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' && (github.repository != 'chrismacdonaldw/Shipwright' || (github.event_name == 'push' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/')))) }}
     runs-on: ubuntu-22.04
     steps:
     - name: Git Checkout
@@ -49,7 +49,7 @@ jobs:
         retention-days: 3
 
   build-macos:
-    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' }}
+    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' && (github.repository != 'chrismacdonaldw/Shipwright' || (github.event_name == 'push' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/')))) }}
     needs: generate-soh-otr
     runs-on: macos-14
     steps:
@@ -94,7 +94,7 @@ jobs:
           readme.txt
 
   build-linux:
-    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' }}
+    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' && (github.repository != 'chrismacdonaldw/Shipwright' || (github.event_name == 'push' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/')))) }}
     needs: generate-soh-otr
     runs-on: ubuntu-22.04
     steps:
@@ -191,7 +191,7 @@ jobs:
         path: deps
 
   build-windows:
-    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' }}
+    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' && (github.repository != 'chrismacdonaldw/Shipwright' || (github.event_name == 'push' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/')))) }}
     needs: generate-soh-otr
     runs-on: windows-latest
     steps:

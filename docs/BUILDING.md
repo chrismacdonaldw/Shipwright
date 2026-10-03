@@ -387,3 +387,15 @@ You'll have to enable the ability to run unsigned scripts through PowerShell. To
 
 ### Runner on UNIX systems
 If you're on macOS or Linux take a look at `.github/macports.yml` or `.github/workflows/apt-deps.txt` to see the dependencies expected to be on your machine.
+
+## Reviewed upstream updates
+
+After the setup is merged into this fork's default branch, the upstream-sync workflow checks the canonical upstream daily and can be started manually. It proposes a normal merge into `develop`, preserving this fork's changes. It leaves one frozen proposal open for review; it does not merge, force-push, resolve conflicts or create releases. An update that changes workflow/automation files is held for manual review.
+
+The sync job currently publishes proposals with the built-in repository token. GitHub places PR workflow runs created by this token in an approval-required state. Review the frozen proposal and approve its workflow run before merging. Unattended validation with a scoped GitHub App remains pending App registration; no App credentials are currently configured.
+
+The Native check workflow runs automatically for PRs targeting `develop`, including upstream proposals after workflow approval. It tests the PR's actual test-merge commit and verifies its base/head parents. The validator has read-only permissions, no supplied secrets and no persisted checkout credentials. It builds the standalone Windows executable with a pinned vcpkg SDK and runs the save-publication regression. Required validation and independent review precede a normal merge. Manual `native-check.yml` dispatch remains available for diagnostics or default-branch cache preparation; those dispatch checks do not satisfy PR protection.
+
+In this fork, inherited resource/package builds run only on default-branch or tag pushes. Feature PRs use Native check without extracting ROMs or packaging game resources. Canonical upstream packaging behavior is unchanged.
+
+Review the candidate diff and the successful Native check run for that exact commit before merging. A stale, failed or missing check is not validation; changing the proposal branch requires a new exact-commit check. A blocked update should be handled on a separate reviewed branch rather than rewriting the frozen proposal.
