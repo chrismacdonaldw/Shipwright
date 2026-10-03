@@ -1,19 +1,24 @@
 name: generate-builds
 on:
   push:
+    branches-ignore: ["sync/upstream-*", "ci/upstream-sync"]
   pull_request:
+permissions:
+  contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
 
   generate-soh-otr:
+    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' }}
     runs-on: ubuntu-22.04
     steps:
     - name: Git Checkout
       uses: actions/checkout@v7
       with:
         submodules: true
+        persist-credentials: false
     - name: Configure ccache
       uses: hendrikmuhs/ccache-action@v1.2.23
       with:
@@ -44,6 +49,7 @@ jobs:
         retention-days: 3
 
   build-macos:
+    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' }}
     needs: generate-soh-otr
     runs-on: macos-14
     steps:
@@ -51,6 +57,7 @@ jobs:
       uses: actions/checkout@v7
       with:
         submodules: true
+        persist-credentials: false
     - name: Setup Macports
       uses: melusina-org/setup-macports@v1
       with:
@@ -87,6 +94,7 @@ jobs:
           readme.txt
 
   build-linux:
+    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' }}
     needs: generate-soh-otr
     runs-on: ubuntu-22.04
     steps:
@@ -94,6 +102,7 @@ jobs:
       uses: actions/checkout@v7
       with:
         submodules: true
+        persist-credentials: false
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -182,6 +191,7 @@ jobs:
         path: deps
 
   build-windows:
+    if: ${{ !startsWith(github.head_ref, 'sync/upstream-') && github.head_ref != 'ci/upstream-sync' }}
     needs: generate-soh-otr
     runs-on: windows-latest
     steps:
@@ -193,6 +203,7 @@ jobs:
       uses: actions/checkout@v7
       with:
         submodules: true
+        persist-credentials: false
     - name: Configure ccache
       uses: hendrikmuhs/ccache-action@v1.2.23
       with:

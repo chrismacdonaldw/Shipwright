@@ -1,0 +1,30 @@
+name: Upstream sync
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+jobs:
+  propose:
+    if: github.repository == 'chrismacdonaldw/Shipwright' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: develop
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test proposal guards
+        run: python3 -m unittest discover -s .github/scripts -p test_sync_upstream.py
+      - name: Propose upstream merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/sync_upstream.py

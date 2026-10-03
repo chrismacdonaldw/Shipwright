@@ -366,6 +366,16 @@ cmake --build build-wiiu --target soh # --target soh_wuhb (for building .wuhb)
 # Compatible Roms
 See [`supportedHashes.json`](supportedHashes.json)
 
+## Maintained fork upstream updates
+
+`Upstream sync` runs daily at 05:23 UTC or through **Run workflow** once the setup is merged into `develop`. It merges official upstream `develop` into a new frozen `sync/upstream-<commit>` branch and opens a draft PR. It preserves fork commits and never merges the PR automatically. An open proposal queues newer upstream commits. Conflicts and changes under `.github/` stop publication for manual integration.
+
+`Native check` is dispatched at the proposal ref with its exact commit identity. A read-only Windows runner builds the standalone executable and runs `tests/SaveFileTest.cpp`, using declared submodules and a pinned vcpkg SDK with package/build caches. No game assets, private secrets, extraction or gameplay are involved. The initial `ci/upstream-sync` setup branch also runs this check on push. Inherited packaging workflows skip these branches.
+
+The sync job uses the built-in token with contents, PR and dispatch permissions; candidate validation only has read permission. Enable **Allow GitHub Actions to create and approve pull requests** while retaining the read-only default. If dispatch fails after PR creation, a later sync run retries only the missing validation for that unchanged merge; an existing failed check requires diagnosis and a manual re-run. Required checks should use the observed `native-windows` check, with zero account approvals for the sole owner; independent source review still precedes merging.
+
+Both workflows must land on `develop` before scheduled/manual sync is available. Repository protection and checks do not authorize a default-branch merge.
+
 ## Getting CI to work on your fork
 
 The CI works via [Github Actions](https://github.com/features/actions) where we mostly make use of machines hosted by Github; except for the very first step of the CI process called "Extract assets". This steps extracts assets from the game file and generates an "assets" folder in `soh/`.
