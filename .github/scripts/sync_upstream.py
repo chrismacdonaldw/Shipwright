@@ -134,7 +134,7 @@ def main():
              "-f", "head=" + branch, "-f", "base=" + BASE, "-F", "draft=true",
              "-f", "body=- Merge upstream develop while preserving fork changes.\n- Validate the merged result with the native Windows build and save regression.")
     note("Frozen candidate " + candidate + ": " + pr["html_url"] + ". Review and merge remain manual.")
-    note("Review and approve the PR workflow run. Built-in-token proposals require workflow approval; diagnostic dispatch does not satisfy required checks.")
+    note("The App-created PR starts native PR validation. Review remains required; diagnostic dispatch does not satisfy required checks.")
 
 
 if __name__ == "__main__":
