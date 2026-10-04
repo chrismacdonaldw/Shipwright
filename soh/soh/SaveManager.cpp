@@ -1435,9 +1435,7 @@ static void CompleteSave(const SaveManager::SaveCompletion& completion, bool suc
     if (completion) {
         try {
             completion(success);
-        } catch (...) {
-            SPDLOG_ERROR("Save completion callback failed");
-        }
+        } catch (...) { SPDLOG_ERROR("Save completion callback failed"); }
     }
 }
 
