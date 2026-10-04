@@ -1,17 +1,17 @@
 name: Native check
 on:
+  pull_request:
+    branches: [develop]
   workflow_dispatch:
     inputs:
       expected_sha:
-        description: Exact candidate commit to validate
+        description: Exact commit for a diagnostic run (does not satisfy PR checks)
         required: true
         type: string
-  push:
-    branches: [ci/upstream-sync]
 permissions:
   contents: read
 concurrency:
-  group: native-check-${{ github.sha }}
+  group: native-check-${{ github.event_name }}-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   native-windows:
@@ -19,18 +19,26 @@ jobs:
     timeout-minutes: 120
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
       VCPKG_PIN: 4a1c77189c64dae7afd478333a64d1e604d5dc91
     steps:
-      - name: Validate dispatched identity
+      - name: Validate event identity
         shell: pwsh
         run: |
           if ($env:GITHUB_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid event commit' }
           if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and $env:EXPECTED_SHA -cne $env:GITHUB_SHA) {
             throw 'Dispatch must target the exact expected candidate commit'
           }
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            if ($env:PR_HEAD_SHA -notmatch '^[0-9a-f]{40}$' -or $env:PR_BASE_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid PR commit identity' }
+            if ($env:PR_NUMBER -notmatch '^[0-9]+$' -or $env:GITHUB_REF -cne "refs/pull/$env:PR_NUMBER/merge") { throw 'Expected PR merge ref' }
+          }
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 2
           submodules: recursive
           persist-credentials: false
       - name: Verify checked-out commit
@@ -38,6 +46,11 @@ jobs:
         run: |
           if ((git rev-parse HEAD) -cne $env:GITHUB_SHA) { throw 'Checked-out commit differs' }
           if ($LASTEXITCODE -ne 0) { throw 'Cannot read checked-out commit' }
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            $parents = (git show -s --format=%P HEAD) -split ' '
+            if ($LASTEXITCODE -ne 0 -or $parents.Count -ne 2 -or $parents[0] -cne $env:PR_BASE_SHA -or $parents[1] -cne $env:PR_HEAD_SHA) { throw 'PR merge parents differ from event' }
+            "Validated PR head $env:PR_HEAD_SHA with base $env:PR_BASE_SHA at test merge $env:GITHUB_SHA" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64

@@ -95,15 +95,15 @@ class ProposalTests(unittest.TestCase):
         self.assertIn("Target moved", error)
         self.assertFalse(any("push" in c[0] for c in calls))
 
-    def test_candidate_dispatch_matches_pushed_sha(self):
+    def test_candidate_pr_is_frozen_without_dispatch(self):
         calls, error = self.exercise()
         self.assertIsNone(error)
         push = next(c for c in calls if "push" in c[0])
         self.assertEqual(push[0][-1], "HEAD:refs/heads/sync/upstream-" + TIP)
         self.assertNotIn("--force", push[0])
-        dispatch = next(c for c in calls if "dispatches" in str(c[0]))
-        self.assertIn("ref=sync/upstream-" + TIP, dispatch[0])
-        self.assertIn("inputs[expected_sha]=" + CANDIDATE, dispatch[0])
+        self.assertFalse(any("dispatches" in str(c[0]) for c in calls))
+        pr = next(c for c in calls if isinstance(c[0], str) and c[0].endswith("/pulls"))
+        self.assertIn("head=sync/upstream-" + TIP, pr[1])
 
     def test_invalid_sha_refuses(self):
         with self.assertRaises(ValueError):
@@ -127,7 +127,7 @@ class ProposalTests(unittest.TestCase):
             paths = sync.run("git", "-C", directory, "diff", "--cached", "--name-only", "-z").split("\0")
             self.assertEqual(sync.unsafe_paths(paths), [".github/workflows/évil.yml"])
 
-    def test_missing_dispatch_is_retried_without_push(self):
+    def test_open_proposal_waits_for_real_pr_validation(self):
         proposal = {"head": {"ref": sync.PREFIX + TIP, "sha": CANDIDATE,
                               "repo": {"full_name": "chrismacdonaldw/Shipwright"}}}
         def api(path):
@@ -136,9 +136,9 @@ class ProposalTests(unittest.TestCase):
             if "rev-list" in args:
                 return " ".join((CANDIDATE, BASE, TIP))
             return CANDIDATE if "rev-parse" in args else ""
-        with patch.object(sync, "api", api), patch.object(sync, "run", run), patch.object(sync, "dispatch") as dispatch, patch.object(sync, "note"):
-            sync.resume_validation("chrismacdonaldw/Shipwright", proposal)
-            dispatch.assert_called_once_with("chrismacdonaldw/Shipwright", sync.PREFIX + TIP, CANDIDATE)
+        with patch.object(sync, "api", api), patch.object(sync, "run", run), patch.object(sync, "note") as note:
+            sync.validate_proposal("chrismacdonaldw/Shipwright", proposal)
+            self.assertIn("required PR validation", note.call_args.args[0])
 
     def test_rewritten_validator_cannot_be_dispatched(self):
         proposal = {"head": {"ref": sync.PREFIX + TIP, "sha": CANDIDATE,
@@ -151,10 +151,9 @@ class ProposalTests(unittest.TestCase):
             return ""
         def api(path):
             return {"object": {"sha": CANDIDATE if "sync/upstream-" in path else BASE}}
-        with patch.object(sync, "api", api), patch.object(sync, "run", run), patch.object(sync, "dispatch") as dispatch:
+        with patch.object(sync, "api", api), patch.object(sync, "run", run):
             with self.assertRaisesRegex(ValueError, "maintained default"):
-                sync.resume_validation("chrismacdonaldw/Shipwright", proposal)
-            dispatch.assert_not_called()
+                sync.validate_proposal("chrismacdonaldw/Shipwright", proposal)
 
 
 if __name__ == "__main__":
