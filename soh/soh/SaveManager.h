@@ -43,6 +43,8 @@ typedef enum {
     /* 2 */ NAME_LANGUAGE_NTSC_ENG,
 } FilenameLanguage;
 
+typedef void (*SaveCompletionCallback)(int success, void* userData);
+
 #ifdef __cplusplus
 
 #include <atomic>
@@ -83,6 +85,10 @@ class SaveManager {
     void Init();
     void InitFile(bool isDebug);
     void SaveFile(int fileNum);
+    // Completion reports publication on the worker, or immediately if the request is rejected.
+    // Only signal owned result state here; do not access game/UI state.
+    using SaveCompletion = std::function<void(bool)>;
+    void SaveFile(int fileNum, SaveCompletion completion);
     void SaveSection(int fileNum, int sectionID, bool threaded);
     int GetSaveSectionID(std::string& name);
     void SaveGlobal();
@@ -164,7 +170,8 @@ class SaveManager {
     void ConvertFromUnversioned();
     void CreateDefaultGlobal();
 
-    void SaveFileThreaded(int fileNum, const SaveContext& saveContext, int sectionID);
+    bool SaveFileThreaded(int fileNum, const SaveContext& saveContext, int sectionID);
+    void SaveSection(int fileNum, int sectionID, bool threaded, SaveCompletion completion);
 
     void InitMeta(int slotNum);
     void StartupCheckAndInitMeta(int slotNum);
@@ -205,6 +212,7 @@ class SaveManager {
 void Save_Init(void);
 void Save_InitFile(int isDebug);
 void Save_SaveFile(void);
+void Save_SaveFileWithCompletion(SaveCompletionCallback completion, void* userData);
 void Save_SaveSection(int sectionID);
 void Save_SaveGlobal(void);
 SaveFileMetaInfo* Save_GetSaveMetaInfo(int fileNum);

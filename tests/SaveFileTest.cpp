@@ -5,6 +5,10 @@
 // Windows developer shell: cl /std:c++17 /EHsc tests/SaveFileTest.cpp
 // Pass a nonexistent disposable directory; failure leaves evidence for inspection.
 #include "../soh/soh/SaveFile.h"
+#include "../soh/soh/Enhancements/QoL/AutosaveFeedback.h"
+
+#include <future>
+#include <thread>
 
 #include <iostream>
 #include <iterator>
@@ -23,6 +27,75 @@ static std::string Read(const fs::path& path) {
     std::ifstream input(path, std::ios::binary);
     Require(input.good(), "cannot read test file");
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+static void CheckAutosaveFeedback(const fs::path& root) {
+    AutosaveFeedback feedback;
+    const auto gameThread = std::this_thread::get_id();
+    std::vector<bool> notifications;
+    auto process = [&] {
+        feedback.ProcessResults([&](bool success) {
+            Require(std::this_thread::get_id() == gameThread, "feedback left the game thread");
+            notifications.push_back(success);
+        });
+    };
+
+    // An outstanding autosave cannot borrow completion from a manual save or another autosave.
+    std::promise<void> release;
+    auto gate = release.get_future();
+    void* delayedResult = feedback.BeginSave();
+    auto delayed = std::async(std::launch::async, [&] {
+        gate.wait();
+        AutosaveFeedback::CompleteSave(SaveFile::Publish(root / "autosave", "saved"), delayedResult);
+    });
+    process();
+    Require(notifications.empty(), "queued autosave reported success before publication");
+    Require(SaveFile::Publish(root / "manual", "manual"), "manual-save fixture failed");
+    process();
+    Require(notifications.empty(), "manual save completed an unrelated autosave");
+
+    const fs::path blocked = root / "blocked";
+    Require(fs::create_directory(blocked), "cannot create blocked-publication fixture");
+    void* failedResult = feedback.BeginSave();
+    std::async(std::launch::async, [&] {
+        AutosaveFeedback::CompleteSave(SaveFile::Publish(blocked, "failed"), failedResult);
+    }).get();
+    process();
+    Require(notifications == std::vector<bool>{false}, "publication failure reported autosave success");
+    release.set_value();
+    delayed.get();
+    process();
+    process();
+    Require(notifications == std::vector<bool>({false, true}), "delayed completion was lost or repeated");
+
+    fs::remove(blocked);
+    void* recoveryResult = feedback.BeginSave();
+    std::async(std::launch::async, [&] {
+        AutosaveFeedback::CompleteSave(SaveFile::Publish(blocked, "recovered"), recoveryResult);
+    }).get();
+    process();
+    Require(notifications == std::vector<bool>({false, true, true}), "successful retry did not report success");
+
+    // Scene transitions retain the request; a new loaded game discards only its presentation.
+    void* oldSession = feedback.BeginSave();
+    feedback.Clear();
+    void* newSession = feedback.BeginSave();
+    AutosaveFeedback::CompleteSave(true, oldSession);
+    process();
+    Require(notifications.size() == 3, "old-session result appeared in a new game");
+    AutosaveFeedback::CompleteSave(false, newSession);
+    process();
+    Require(notifications.size() == 4 && !notifications.back(), "new-session request was not independent");
+    void* orphan;
+    {
+        AutosaveFeedback unloading;
+        orphan = unloading.BeginSave();
+    }
+    std::async(std::launch::async, [orphan] { AutosaveFeedback::CompleteSave(true, orphan); }).get();
+
+    fs::remove(root / "autosave");
+    fs::remove(root / "manual");
+    fs::remove(blocked);
 }
 
 int main(int argc, char** argv) {
@@ -66,13 +139,15 @@ int main(int argc, char** argv) {
         Require(std::distance(fs::directory_iterator(root), fs::directory_iterator()) == 3,
                 "owned temporary paths were not cleaned");
 
+        CheckAutosaveFeedback(root);
+
         // Only these exact fixture leaves are removed; never traverse an existing directory.
         fs::remove(foreignDirectory / "keep");
         fs::remove(foreignDirectory);
         fs::remove(foreignFile);
         fs::remove(destination);
         fs::remove(root);
-        std::cout << "Save publication regression passed\n";
+        std::cout << "Save publication and autosave feedback regression passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

@@ -1574,6 +1574,7 @@ s32 FrameAdvance_IsEnabled(PlayState* play);
 s32 func_800C0D34(PlayState* play, Actor* actor, s16* yaw);
 s32 func_800C0DB4(PlayState* play, Vec3f* pos);
 void Play_PerformSave(PlayState* play);
+void Play_PerformSaveWithCompletion(PlayState* play, void (*completion)(int success, void* userData), void* userData);
 void PreRender_SetValuesSave(PreRender* this, u32 width, u32 height, void* fbuf, void* zbuf, void* cvg);
 void PreRender_Init(PreRender* this);
 void PreRender_SetValues(PreRender* this, u32 width, u32 height, void* fbuf, void* zbuf);
