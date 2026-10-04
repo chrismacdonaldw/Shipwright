@@ -1331,12 +1331,13 @@ void SaveManager::InitFileMaxed() {
 
 // Threaded SaveFile takes copy of gSaveContext for local unmodified storage
 
-void SaveManager::SaveFileThreaded(int fileNum, const SaveContext& saveContext, int sectionID) {
-    const std::lock_guard<std::mutex> lock(saveMtx);
+bool SaveManager::SaveFileThreaded(int fileNum, const SaveContext& saveContext, int sectionID) {
+    bool published = false;
     try {
+        const std::lock_guard<std::mutex> lock(saveMtx);
         if (refusedSlots[fileNum]) {
             SPDLOG_ERROR("Save {} refused: unsupported diptych section", GetFileName(fileNum).string());
-            return;
+            return false;
         }
         SPDLOG_INFO("Save File - fileNum: {}", fileNum);
         // Needed for first time save, hasn't changed in forever anyway
@@ -1390,7 +1391,7 @@ void SaveManager::SaveFileThreaded(int fileNum, const SaveContext& saveContext, 
         FILE* w = fopen(tempFile.c_str(), "w");
         if (w == nullptr) {
             SPDLOG_ERROR("Save File failed - fileNum: {}", fileNum);
-            return;
+            return false;
         }
         fwrite(json_string.c_str(), sizeof(char), json_string.length(), w);
         fclose(w);
@@ -1404,9 +1405,10 @@ void SaveManager::SaveFileThreaded(int fileNum, const SaveContext& saveContext, 
 #else
         if (!SohSaveFile::Publish(fileName, saveBlock.dump(1) + "\n")) {
             SPDLOG_ERROR("Save File failed - fileNum: {}", fileNum);
-            return;
+            return false;
         }
 #endif
+        published = true;
 #ifdef DIPTYCH_GAME_MODULE
         if (fileNum >= 0 && fileNum < 3 && sectionID == SECTION_ID_BASE) {
             sDiptychBaseWrites[fileNum]++;
@@ -1420,32 +1422,59 @@ void SaveManager::SaveFileThreaded(int fileNum, const SaveContext& saveContext, 
     } catch (...) {
         SPDLOG_ERROR("Save File failed - fileNum: {}: unknown exception", fileNum);
     }
+    return published;
 }
 
 // SaveSection creates a copy of gSaveContext to prevent mid-save data modification, and passes its reference to
 // SaveFileThreaded This should never be called with threaded == false except during file creation
 void SaveManager::SaveSection(int fileNum, int sectionID, bool threaded) {
-    // Don't save in Boss rush.
-    if (fileNum == 0xFF || fileNum == 0xFE) {
+    SaveSection(fileNum, sectionID, threaded, {});
+}
+
+static void CompleteSave(const SaveManager::SaveCompletion& completion, bool success) {
+    if (completion) {
+        try {
+            completion(success);
+        } catch (...) { SPDLOG_ERROR("Save completion callback failed"); }
+    }
+}
+
+void SaveManager::SaveSection(int fileNum, int sectionID, bool threaded, SaveCompletion completion) {
+    // Don't save in Boss rush or to an invalid file slot.
+    if (fileNum < 0 || fileNum >= MaxFiles) {
+        CompleteSave(completion, false);
         return;
     }
-    // Don't save a nonexistent section
-    if (sectionID >= sectionIndex) {
+    if (sectionID < 0 || sectionID >= sectionIndex) {
         SPDLOG_ERROR("SaveSection: Section ID not registered.");
+        CompleteSave(completion, false);
         return;
     }
 
-    auto saveContext = std::make_shared<SaveContext>(gSaveContext);
-    if (threaded) {
-        smThreadPool->detach_task(
-            [this, fileNum, saveContext, sectionID] { SaveFileThreaded(fileNum, *saveContext, sectionID); });
-    } else {
-        SaveFileThreaded(fileNum, *saveContext, sectionID);
+    try {
+        auto saveContext = std::make_shared<SaveContext>(gSaveContext);
+        auto save = [this, fileNum, saveContext, sectionID, completion] {
+            CompleteSave(completion, SaveFileThreaded(fileNum, *saveContext, sectionID));
+        };
+        if (threaded) {
+            smThreadPool->detach_task(std::move(save));
+        } else {
+            save();
+        }
+    } catch (...) {
+        if (!completion) {
+            throw;
+        }
+        CompleteSave(completion, false);
     }
 }
 
 void SaveManager::SaveFile(int fileNum) {
     SaveSection(fileNum, SECTION_ID_BASE, true);
+}
+
+void SaveManager::SaveFile(int fileNum, SaveCompletion completion) {
+    SaveSection(fileNum, SECTION_ID_BASE, true, std::move(completion));
 }
 
 void SaveManager::SaveGlobal() {
@@ -2999,6 +3028,14 @@ extern "C" void Save_InitFile(int isDebug) {
 
 extern "C" void Save_SaveFile(void) {
     SaveManager::Instance->SaveFile(gSaveContext.fileNum);
+}
+
+extern "C" void Save_SaveFileWithCompletion(SaveCompletionCallback completion, void* userData) {
+    SaveManager::Instance->SaveFile(gSaveContext.fileNum, [completion, userData](bool success) {
+        if (completion) {
+            completion(success, userData);
+        }
+    });
 }
 
 extern "C" void Save_SaveSection(int sectionID) {

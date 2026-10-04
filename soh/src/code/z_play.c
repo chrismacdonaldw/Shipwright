@@ -2169,7 +2169,7 @@ s32 func_800C0DB4(PlayState* play, Vec3f* pos) {
     }
 }
 
-void Play_PerformSave(PlayState* play) {
+void Play_PerformSaveWithCompletion(PlayState* play, void (*completion)(int success, void* userData), void* userData) {
     if (play != NULL && gSaveContext.fileNum != 0xFF) {
         Play_SaveSceneFlags(play);
         gSaveContext.savedSceneNum = play->sceneNum;
@@ -2188,10 +2188,20 @@ void Play_PerformSave(PlayState* play) {
             GameInteractor_Should(VB_TEMP_B_RESTORE_SWORDLESS, true);
         }
 
-        Save_SaveFile();
+        if (completion != NULL) {
+            Save_SaveFileWithCompletion(completion, userData);
+        } else {
+            Save_SaveFile();
+        }
 
         // Restore temp B values back
         gSaveContext.equips.buttonItems[0] = prevB;
         gSaveContext.buttonStatus[0] = prevStatus;
+    } else if (completion != NULL) {
+        completion(false, userData);
     }
+}
+
+void Play_PerformSave(PlayState* play) {
+    Play_PerformSaveWithCompletion(play, NULL, NULL);
 }

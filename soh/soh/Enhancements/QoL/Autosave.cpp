@@ -4,6 +4,7 @@
 #include "soh/Notification/Notification.h"
 #include "soh/ShipInit.hpp"
 #include "soh/SaveManager.h"
+#include "AutosaveFeedback.h"
 
 extern "C" {
 extern PlayState* gPlayState;
@@ -13,6 +14,7 @@ extern PlayState* gPlayState;
 }
 
 static uint64_t lastSaveTimestamp;
+static AutosaveFeedback autosaveFeedback;
 
 #define CVAR_AUTOSAVE_NAME CVAR_ENHANCEMENT("Autosave")
 #define CVAR_AUTOSAVE_DEFAULT AUTOSAVE_OFF
@@ -40,15 +42,18 @@ static bool Autosave_CanSave() {
     return true;
 }
 
-static void Autosave_PerformSave() {
-    Play_PerformSave(gPlayState);
+static void Autosave_ProcessFeedback() {
+    autosaveFeedback.ProcessResults([](bool success) {
+        if (CVarGetInteger(CVAR_ENHANCEMENT("AutosaveNotification"), 1)) {
+            Notification::Emit({
+                .message = success ? "Game autosaved" : "Autosave failed",
+            });
+        }
+    });
+}
 
-    // Send notification
-    if (CVarGetInteger(CVAR_ENHANCEMENT("AutosaveNotification"), 1)) {
-        Notification::Emit({
-            .message = "Game autosaved",
-        });
-    }
+static void Autosave_PerformSave() {
+    Play_PerformSaveWithCompletion(gPlayState, AutosaveFeedback::CompleteSave, autosaveFeedback.BeginSave());
 }
 
 static void Autosave_IntervalSave() {
@@ -78,10 +83,25 @@ static void Autosave_SoftResetSave() {
 
 static void RegisterAutosave() {
     lastSaveTimestamp = GetUnixTimestamp();
-    COND_HOOK(GameInteractor::OnLoadGame, CVAR_AUTOSAVE_VALUE,
-              [](uint32_t fileNme) { lastSaveTimestamp = GetUnixTimestamp(); });
-    COND_HOOK(GameInteractor::OnGameFrameUpdate, CVAR_AUTOSAVE_VALUE, Autosave_IntervalSave);
-    COND_HOOK(GameInteractor::OnExitGame, CVAR_AUTOSAVE_VALUE, [](int32_t fileNum) { Autosave_SoftResetSave(); });
+    COND_HOOK(GameInteractor::OnLoadGame, true, [](uint32_t fileNum) {
+        autosaveFeedback.Clear();
+        lastSaveTimestamp = GetUnixTimestamp();
+    });
+    COND_HOOK(GameInteractor::OnGameFrameUpdate, true, []() {
+        Autosave_ProcessFeedback();
+        if (CVAR_AUTOSAVE_VALUE) {
+            Autosave_IntervalSave();
+        }
+    });
+    COND_HOOK(GameInteractor::OnExitGame, true, [](int32_t fileNum) {
+        if (CVAR_AUTOSAVE_VALUE) {
+            Autosave_SoftResetSave();
+        }
+        // Hook order is unspecified; drain after this hook's final save as well.
+        SaveManager::Instance->ThreadPoolWait();
+        Autosave_ProcessFeedback();
+        autosaveFeedback.Clear();
+    });
 }
 
 static RegisterShipInitFunc initFunc(RegisterAutosave, { CVAR_AUTOSAVE_NAME });
