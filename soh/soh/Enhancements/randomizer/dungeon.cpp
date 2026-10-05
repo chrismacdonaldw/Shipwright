@@ -190,7 +190,11 @@ int8_t DungeonInfo::GetTotalSmallKeys(SaveContext* saveContext) const {
 }
 
 std::span<const uint8_t> DungeonInfo::GetDoorFlags() const {
-    if (IsMQ()) {
+    return GetDoorFlagsForQuest(IsMQ());
+}
+
+std::span<const uint8_t> DungeonInfo::GetDoorFlagsForQuest(bool masterQuest) const {
+    if (masterQuest) {
         return MQDoorFlags;
     }
     if (IS_RANDO) {
@@ -198,6 +202,19 @@ std::span<const uint8_t> DungeonInfo::GetDoorFlags() const {
         return randoDoorFlags;
     }
     return vanillaDoorFlags;
+}
+
+std::span<const uint8_t> GetSceneSmallKeyDoorFlags(SceneID scene) {
+    if (scene == SCENE_THIEVES_HIDEOUT) {
+        return ThievesHideoutDoorFlags();
+    }
+    if (scene == SCENE_TREASURE_BOX_SHOP) {
+        return chestGameDoorFlags;
+    }
+    if (const DungeonInfo* dungeon = Context::GetInstance()->GetDungeons()->GetDungeonFromScene(scene)) {
+        return dungeon->GetDoorFlagsForQuest(ResourceMgr_IsSceneMasterQuest(scene));
+    }
+    return {};
 }
 
 void DungeonInfo::SetDungeonKnown(bool known) {

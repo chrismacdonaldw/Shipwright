@@ -26,7 +26,7 @@ typedef enum {
     AUTOSAVE_ON,
 } AutosaveOptions;
 
-static bool Autosave_CanSave() {
+int Play_CanPerformAutomaticSave(void) {
     // Don't save when in title screen or debug file
     // Don't save a file that doesn't exist (e.g. it was deleted on death by user option)
     // Don't save the first 60 frames to not save the magic meter when it's still in the animation of filling it.
@@ -67,7 +67,7 @@ static void Autosave_IntervalSave() {
     // Interval gets extra check for being paused to avoid rare issues like bypassing shop
     // rupees draining after buying an item. Since the interval can just retry until it
     // passes, it can use more conditions without hampering the player experience.
-    if (Autosave_CanSave() && !GameInteractor::IsGameplayPaused()) {
+    if (Play_CanPerformAutomaticSave() && !GameInteractor::IsGameplayPaused()) {
         // Reset timestamp, set icon timer to show autosave icon for 5 seconds (100 frames)
         lastSaveTimestamp = currentTimestamp;
 
@@ -76,7 +76,7 @@ static void Autosave_IntervalSave() {
 }
 
 static void Autosave_SoftResetSave() {
-    if (Autosave_CanSave()) {
+    if (Play_CanPerformAutomaticSave()) {
         Autosave_PerformSave();
     }
 }

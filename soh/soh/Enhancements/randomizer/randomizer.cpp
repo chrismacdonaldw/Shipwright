@@ -26,6 +26,7 @@
 #include "logic.h"
 #include "soh/SohGui/UIWidgets.hpp"
 #include "soh/Enhancements/randomizer/trial.h"
+#include "soh/Network/Anchor/KeyConsumption.h"
 
 extern "C" {
 #include <variables.h>
@@ -1379,6 +1380,7 @@ extern "C" u16 Randomizer_Item_Give(PlayState* play, GetItemEntry giEntry) {
             } else {
                 gSaveContext.inventory.dungeonKeys[mapIndex]++;
             }
+            AnchorKeyConsumption_Granted(mapIndex);
             return Return_Item_Entry(giEntry, RG_NONE);
         }
 

@@ -11,6 +11,7 @@
 #include "objects/object_mizu_objects/object_mizu_objects.h"
 #include "objects/object_haka_door/object_haka_door.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "soh/Network/Anchor/KeyConsumption.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
@@ -203,7 +204,7 @@ void EnDoor_Idle(EnDoor* this, PlayState* play) {
                                    (player->stateFlags1 & PLAYER_STATE1_IN_WATER) ? 0.75f : 1.5f);
         if (this->lockTimer != 0) {
             if (GameInteractor_Should(VB_CONSUME_SMALL_KEY, true, this)) {
-                gSaveContext.inventory.dungeonKeys[gSaveContext.mapIndex]--;
+                AnchorKeyConsumption_Consume(play, gSaveContext.mapIndex, this->actor.params & 0x3F);
                 Flags_SetSwitch(play, this->actor.params & 0x3F);
             }
             Audio_PlayActorSound2(&this->actor, NA_SE_EV_CHAIN_KEY_UNLOCK);
