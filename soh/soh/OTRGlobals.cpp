@@ -1923,7 +1923,7 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
 
     {
         std::unique_lock<std::mutex> Lock(audio.mutex);
-        while (audio.processing && audio.running) {
+        while (audio.processing && audio.running && !OTRAUDIO_SUSPENDED()) {
             audio.cv_from_thread.wait(Lock);
         }
     }
