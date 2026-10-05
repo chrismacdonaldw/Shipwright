@@ -16,6 +16,7 @@
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "soh/Network/Anchor/KeyConsumption.h"
 #include "soh/Enhancements/randomizer/randomizer_grotto.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
@@ -1989,9 +1990,11 @@ u8 Item_Give(PlayState* play, u8 item) {
     } else if (item == ITEM_KEY_SMALL) {
         if (gSaveContext.inventory.dungeonKeys[gSaveContext.mapIndex] < 0) {
             gSaveContext.inventory.dungeonKeys[gSaveContext.mapIndex] = 1;
+            AnchorKeyConsumption_Granted(gSaveContext.mapIndex);
             return Return_Item(item, MOD_NONE, ITEM_NONE);
         } else {
             gSaveContext.inventory.dungeonKeys[gSaveContext.mapIndex]++;
+            AnchorKeyConsumption_Granted(gSaveContext.mapIndex);
             return Return_Item(item, MOD_NONE, ITEM_NONE);
         }
     } else if ((item == ITEM_QUIVER_30) || (item == ITEM_BOW)) {

@@ -44,6 +44,7 @@ class DungeonInfo {
     int8_t GetTotalSmallKeys(SaveContext* saveContext) const;
     RandomizerSettingKey GetMQSetting() const;
     std::span<const uint8_t> GetDoorFlags() const;
+    std::span<const uint8_t> GetDoorFlagsForQuest(bool masterQuest) const;
     void SetDungeonKnown(bool known);
     void PlaceVanillaMap() const;
     void PlaceVanillaCompass() const;
@@ -120,4 +121,6 @@ class Dungeons {
   private:
     std::array<DungeonInfo, 12> dungeonList;
 };
+// Reuses the native locked-door catalogue for the layout actually loaded.
+std::span<const uint8_t> GetSceneSmallKeyDoorFlags(SceneID scene);
 } // namespace Rando

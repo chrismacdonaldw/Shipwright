@@ -24,6 +24,7 @@
 #include "objects/object_demo_kekkai/object_demo_kekkai.h"
 #include "objects/object_ouke_haka/object_ouke_haka.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "soh/Network/Anchor/KeyConsumption.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -392,7 +393,7 @@ void DoorShutter_Idle(DoorShutter* this, PlayState* play) {
         if (this->unlockTimer != 0) {
             Flags_SetSwitch(play, this->dyna.actor.params & 0x3F);
             if (this->doorType != SHUTTER_BOSS) {
-                gSaveContext.inventory.dungeonKeys[gSaveContext.mapIndex]--;
+                AnchorKeyConsumption_Consume(play, gSaveContext.mapIndex, this->dyna.actor.params & 0x3F);
                 Audio_PlayActorSound2(&this->dyna.actor, NA_SE_EV_CHAIN_KEY_UNLOCK);
                 GameInteractor_ExecuteOnDungeonKeyUsedHooks(gSaveContext.mapIndex);
             } else {
